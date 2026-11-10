@@ -113,6 +113,7 @@ interface Settings {
   theme: 'system' | 'light' | 'dark'
   lastExportAt: number | null
   persistRequested: boolean
+  persisted: boolean | null // result of storage.persist(); null if unsupported
 }
 ```
 
