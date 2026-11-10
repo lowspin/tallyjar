@@ -19,7 +19,13 @@ const store = useItemsStore()
 const reached = computed(() => isReached(props.item.count, props.item.target))
 const locked = computed(() => isLocked(props.item))
 const done = computed(() => locked.value && !canIncrement(props.item.count, props.item))
-const stepHint = computed(() => props.item.step > 1)
+/** Shown inside the −/+ buttons when a double tap does more than ±1. */
+function stepHint(sign: 1 | -1): string | undefined {
+  const { step } = props.item
+  if (step <= 1) return undefined
+  // Long steps use the compact form so the hint fits inside the button.
+  return step >= 10_000 ? (sign > 0 ? '+' : '−') + formatCompact(step) : formatSigned(sign * step)
+}
 
 const plusLabel = computed(() => {
   const { name, step } = props.item
@@ -34,16 +40,35 @@ const minusLabel = computed(() => {
     : `Subtract 1 from ${name}`
 })
 
-// ─── Count display: full number, or compact when it doesn't fit ─────────────
+// ─── Count display: full numbers, shortened only when they don't fit ────────
+// The target is shortened first ("1,999 / 2K"): the count stays exact as long as possible,
+// since rounding it ("2K / 2K") would make an unfinished item look done.
 const countBox = useTemplateRef<HTMLElement>('countBox')
-const measure = useTemplateRef<HTMLElement>('measure')
-const compact = ref(false)
+const measureValue = useTemplateRef<HTMLElement>('measureValue')
+const measureTarget = useTemplateRef<HTMLElement>('measureTarget')
+const measureTargetCompact = useTemplateRef<HTMLElement>('measureTargetCompact')
+/** 0: all full, 1: compact target, 2: compact count and target. */
+const compactLevel = ref<0 | 1 | 2>(0)
 const fullText = computed(() => formatCount(props.item.count))
-const shownText = computed(() => (compact.value ? formatCompact(props.item.count) : fullText.value))
+const shownText = computed(() =>
+  compactLevel.value === 2 ? formatCompact(props.item.count) : fullText.value,
+)
+const shownTarget = computed(() => {
+  const { target } = props.item
+  if (target === null) return ''
+  return compactLevel.value >= 1 ? formatCompact(target) : formatCount(target)
+})
+
+const COUNT_GAP_PX = 4 // matches the .count gap
 
 function fit() {
-  if (!countBox.value || !measure.value) return
-  compact.value = measure.value.offsetWidth > countBox.value.clientWidth
+  if (!countBox.value || !measureValue.value) return
+  const room = countBox.value.clientWidth
+  const value = measureValue.value.offsetWidth
+  const target = (el: HTMLElement | null) => (el ? COUNT_GAP_PX + el.offsetWidth : 0)
+  if (value + target(measureTarget.value) <= room) compactLevel.value = 0
+  else if (value + target(measureTargetCompact.value) <= room) compactLevel.value = 1
+  else compactLevel.value = 2
 }
 
 let observer: ResizeObserver | null = null
@@ -55,7 +80,7 @@ onMounted(() => {
   }
 })
 onBeforeUnmount(() => observer?.disconnect())
-watch(fullText, () => nextTick(fit))
+watch([fullText, () => props.item.target], () => nextTick(fit))
 
 // ─── Feedback: count pop, double-tap label, target reached ──────────────────
 const popKey = ref(0)
@@ -97,57 +122,59 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
     :style="{ '--item': item.color, '--item-text': textOn(item.color) }"
     :aria-label="item.name"
   >
-    <header class="card__head">
-      <ItemThumb :name="item.name" :color="item.color" :image-id="item.imageId" />
-      <h3 class="card__name">{{ item.name }}</h3>
-      <span v-if="reached" class="badge" role="img" aria-label="Target reached">
-        <AppIcon name="check" :size="16" />
-      </span>
-      <!-- Pointer-only: keyboard and screen-reader users reorder with Move up/down in the menu. -->
-      <span class="icon-button drag-handle" aria-hidden="true" title="Drag to reorder">
-        <AppIcon name="grip" />
-      </span>
-      <button
-        class="icon-button"
-        type="button"
-        :aria-label="`More actions for ${item.name}`"
-        aria-haspopup="dialog"
-        @click="emit('open-menu', item)"
-      >
-        <AppIcon name="menu-vertical" />
-      </button>
-    </header>
+    <!-- Pointer-only: keyboard and screen-reader users reorder with Move up/down in the menu. -->
+    <span class="drag-handle" aria-hidden="true" title="Drag to reorder">
+      <AppIcon name="grip" :size="18" />
+    </span>
 
-    <button
-      ref="countBox"
-      class="count"
-      type="button"
-      :aria-label="`${item.name}: ${fullText}${item.target !== null ? ` of ${formatCount(item.target)}` : ''}. Set count`"
-      @click="emit('open-count', item)"
-    >
-      <span :key="popKey" class="count__value tabular" :class="{ 'count__value--pop': popKey > 0 }">
-        {{ shownText }}
-      </span>
-      <span v-if="item.target !== null" class="count__target tabular">
-        / {{ formatCount(item.target) }}
-      </span>
-      <!-- Invisible copy of the row at full length, used to decide whether it fits. -->
-      <span ref="measure" class="count__measure" aria-hidden="true">
-        <span class="count__value tabular">{{ fullText }}</span>
-        <span v-if="item.target !== null" class="count__target tabular">
-          / {{ formatCount(item.target) }}
+    <ItemThumb :name="item.name" :color="item.color" :image-id="item.imageId" :size="40" />
+
+    <div class="card__info">
+      <div class="card__title">
+        <h3 class="card__name">{{ item.name }}</h3>
+        <span v-if="reached" class="badge" role="img" aria-label="Target reached">
+          <AppIcon name="check" :size="12" />
         </span>
-      </span>
-    </button>
-    <span class="visually-hidden" aria-live="polite">{{ item.name }}: {{ fullText }}</span>
+      </div>
 
-    <ProgressBar
-      v-if="item.target !== null"
-      :count="item.count"
-      :target="item.target"
-      :label="item.name"
-      :celebrate="celebrate"
-    />
+      <button
+        ref="countBox"
+        class="count"
+        type="button"
+        :aria-label="`${item.name}: ${fullText}${item.target !== null ? ` of ${formatCount(item.target)}` : ''}. Set count`"
+        @click="emit('open-count', item)"
+      >
+        <span
+          :key="popKey"
+          class="count__value tabular"
+          :class="{ 'count__value--pop': popKey > 0 }"
+        >
+          {{ shownText }}
+        </span>
+        <span v-if="item.target !== null" class="count__target tabular"> / {{ shownTarget }} </span>
+        <!-- Invisible copy of the row at full length, used to decide whether it fits. -->
+        <span class="count__measure" aria-hidden="true">
+          <span ref="measureValue" class="count__value tabular">{{ fullText }}</span>
+          <template v-if="item.target !== null">
+            <span ref="measureTarget" class="count__target tabular">
+              / {{ formatCount(item.target) }}
+            </span>
+            <span ref="measureTargetCompact" class="count__target tabular">
+              / {{ formatCompact(item.target) }}
+            </span>
+          </template>
+        </span>
+      </button>
+      <span class="visually-hidden" aria-live="polite">{{ item.name }}: {{ fullText }}</span>
+
+      <ProgressBar
+        v-if="item.target !== null"
+        :count="item.count"
+        :target="item.target"
+        :label="item.name"
+        :celebrate="celebrate"
+      />
+    </div>
 
     <div class="controls">
       <div class="control">
@@ -156,11 +183,9 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
           :step="item.step"
           :disabled="!canDecrement(item.count)"
           :label="minusLabel"
+          :hint="stepHint(-1)"
           @change="onChange"
         />
-        <span v-if="stepHint" class="hint tabular" aria-hidden="true">
-          {{ formatSigned(-item.step) }}
-        </span>
         <TransitionGroup name="float">
           <span
             v-for="f in floats.filter((x) => x.side === 'minus')"
@@ -173,18 +198,19 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
       </div>
 
       <div class="control">
-        <span v-if="done" class="done" role="status">Done <AppIcon name="check" :size="20" /></span>
+        <span v-if="done" class="done" role="status">
+          <AppIcon name="check" :size="22" />
+          <span class="visually-hidden">Done</span>
+        </span>
         <CountButton
           v-else
           :direction="1"
           :step="item.step"
           :disabled="!canIncrement(item.count, item)"
           :label="plusLabel"
+          :hint="stepHint(1)"
           @change="onChange"
         />
-        <span v-if="stepHint && !done" class="hint tabular" aria-hidden="true">
-          {{ formatSigned(item.step) }}
-        </span>
         <TransitionGroup name="float">
           <span
             v-for="f in floats.filter((x) => x.side === 'plus')"
@@ -196,54 +222,93 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
         </TransitionGroup>
       </div>
     </div>
+
+    <button
+      class="icon-button card__menu"
+      type="button"
+      :aria-label="`More actions for ${item.name}`"
+      aria-haspopup="dialog"
+      @click="emit('open-menu', item)"
+    >
+      <AppIcon name="menu-vertical" :size="20" />
+    </button>
   </article>
 </template>
 
 <style scoped>
+/*
+ * One compact row so about eight items fit on a phone screen:
+ * [grip] [thumb] [name / count / progress] [− +] [⋮]
+ */
 .card {
+  --pad: var(--space-2);
   position: relative;
   display: grid;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-4) var(--space-4) calc(var(--space-4) + 6px);
-  overflow: hidden;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 64px;
+  padding: var(--pad) 0;
+  /* The thick left border is the accent bar; it follows the rounded corners. */
   border: 1.5px solid transparent;
-  border-radius: var(--radius-card);
+  border-left: 5px solid var(--item);
+  border-radius: 14px;
   background: color-mix(in oklch, var(--item) var(--tint-card), var(--color-surface));
   box-shadow: var(--shadow-card);
 }
 
 :root[data-theme='dark'] .card:not(.card--reached) {
   border-color: rgb(255 255 255 / 0.06);
-}
-
-/* Accent bar */
-.card::before {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 6px;
-  background: var(--item);
+  border-left-color: var(--item);
 }
 
 .card--reached {
   border-color: var(--item);
 }
 
-.card__head {
+/* Full-height strips at both ends: easy to hit without taking much width. */
+.drag-handle,
+.card__menu {
+  align-self: stretch;
+  margin-block: calc(-1 * var(--pad));
+}
+
+.drag-handle {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  cursor: grab;
+  touch-action: none;
+  color: var(--color-text-muted);
+}
+
+.card__menu {
+  width: 36px;
+  height: auto;
+  border-radius: 0 12px 12px 0;
+  color: var(--color-text-muted);
+}
+
+.card__info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.card__title {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-1);
   min-width: 0;
-  margin-right: calc(-1 * var(--space-2));
 }
 
 .card__name {
-  flex: 1;
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  font-size: 1.0625rem;
+  font-size: 0.9375rem;
   font-weight: 800;
+  line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -252,24 +317,18 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
   display: grid;
   flex: none;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   border-radius: var(--radius-pill);
   background: var(--item);
   color: var(--item-text);
-}
-
-.drag-handle {
-  cursor: grab;
-  touch-action: none;
-  color: var(--color-text-muted);
 }
 
 .count {
   position: relative;
   display: flex;
   align-items: baseline;
-  gap: var(--space-2);
+  gap: var(--space-1);
   min-width: 0;
   padding: 0;
   border: 0;
@@ -282,7 +341,7 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
 
 .count__value {
   display: inline-block;
-  font-size: 2.25rem;
+  font-size: 1.3125rem;
   font-weight: 700;
   line-height: 1.15;
   letter-spacing: -0.01em;
@@ -293,7 +352,7 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
 }
 
 .count__target {
-  font-size: 1.125rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   color: var(--color-text-muted);
 }
@@ -304,55 +363,53 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
   left: 0;
   display: flex;
   align-items: baseline;
-  gap: var(--space-2);
+  gap: var(--space-1);
   visibility: hidden;
   pointer-events: none;
 }
 
 .controls {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-4);
-  margin-top: var(--space-1);
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Small phones: give the name and count a little more room. */
+@media (max-width: 380px) {
+  .controls {
+    gap: 6px;
+  }
+  .done {
+    width: 48px;
+  }
 }
 
 .control {
   position: relative;
-  display: grid;
-  justify-items: center;
-  gap: var(--space-1);
-}
-
-.hint {
-  font-size: 0.8125rem;
-  font-weight: 700;
-  color: var(--color-text-muted);
 }
 
 .done {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  width: 100%;
-  height: 56px;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 48px;
   border-radius: var(--radius-pill);
   border: 2px solid var(--item);
   color: var(--color-text);
-  font-weight: 800;
 }
 
 .float {
   position: absolute;
-  top: -6px;
+  bottom: calc(100% + 2px);
   left: 50%;
+  z-index: 1;
   transform: translateX(-50%);
-  padding: 2px 10px;
+  padding: 1px 8px;
   border-radius: var(--radius-pill);
   background: var(--color-text);
   color: var(--color-bg);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 800;
+  white-space: nowrap;
   pointer-events: none;
 }
 
@@ -388,7 +445,7 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
 
 @keyframes pop {
   0% {
-    transform: translateY(3px) scale(1);
+    transform: translateY(2px) scale(1);
   }
   50% {
     transform: translateY(0) scale(1.08);
@@ -403,7 +460,7 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--item) 70%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 14px color-mix(in srgb, var(--item) 0%, transparent);
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--item) 0%, transparent);
   }
 }
 
@@ -423,7 +480,7 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -28px);
+    transform: translate(-50%, -16px);
   }
 }
 </style>

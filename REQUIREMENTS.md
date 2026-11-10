@@ -145,13 +145,13 @@ Future schema changes go through Dexie version upgrades. Never edit v1 in place 
 
 ### 5.1 Controls (on each item card)
 
-- Large **−** and **+** buttons (≥ 48 × 48 px tap targets).
+- **−** and **+** buttons with ≥ 48 × 48 px tap targets.
 - **Single tap = ±1. Double tap = ±`step`.** This lets the user jump in big steps, then fine-tune by 1 as they get close.
   - **No waiting to detect a double tap.** The first tap applies ±1 _immediately_. If a second tap on the same button lands within **300 ms**, it applies the remainder (±(`step` − 1)), so the double tap adds exactly `step` in total. Single taps never feel laggy.
   - The count "pop" animation shows a small floating label for the double-tap amount (e.g. "+200").
   - If `step === 1`, a double tap is just two single taps (+2 in total).
   - Clamping (§5.2) applies to each part separately. For example, if the first tap reaches a locked target, the second part is ignored.
-  - Under each button, when `step > 1`, show a small muted hint with just the signed step: "−200" under −, "+200" under +.
+  - When `step > 1`, each button shows a small hint with just the signed step under its icon, inside the button: "−200" on −, "+200" on +. Steps of 10,000 or more use compact notation ("+25K").
   - Set `touch-action: manipulation` on the buttons so mobile browsers don't double-tap-zoom.
   - **Desktop/keyboard equivalent:** Shift+click or Shift+Enter/Space = ±`step`. Plain click/Enter = ±1.
 - **Press and hold** auto-repeats by **`step`**: starts after 400 ms and speeds up over time (e.g. 8/s rising to about 25/s). It stops on release, pointer leave, or when a limit is reached. Use pointer events so it works with both mouse and touch, and prevent the long-press context menu and text selection.
@@ -174,7 +174,7 @@ Future schema changes go through Dexie version upgrades. Never edit v1 in place 
 ### 5.4 Number display
 
 - Show the full number with locale grouping (`Intl.NumberFormat`), e.g. `1,234,567`.
-- If it doesn't fit the card width, fall back to compact notation (`1.2M`, `3.4B`) with the full value in the Set-count sheet and `aria-label`.
+- If it doesn't fit the card width, fall back to compact notation (`1.2M`, `3.4B`) with the full value in the Set-count sheet and `aria-label`. Shorten the target first (`1,999 / 2K`) and the count only if that still doesn't fit, so rounding never makes an unfinished item look done.
 - Progress text: `1,234 / 5,000` and a percentage.
 
 ### 5.5 Persistence of counts
@@ -196,18 +196,18 @@ Single-screen app with bottom sheets / dialogs for editing.
 │ [Snacks] [Books] [Steps] [+]   ← → ⇆  │  jar tabs, horizontal scroll, drag to reorder
 ├───────────────────────────────────────┤
 │ ┌───────────────────────────────────┐ │
-│ │▌[img] Almonds             ⋮       │ │  item card (accent bar = item color)
-│ │▌       1,240 / 2,000              │ │
-│ │▌ ███████████░░░░░░  62%           │ │
-│ │▌   [  −  ]              [  +  ]   │ │
-│ │▌     −200                  +200   │ │  double-tap hint (only when step > 1)
+│ │▌⋮⋮ [img] Almonds        [ − ][ + ] ⋮│ │  compact one-row item card (accent bar = item color);
+│ │▌         1,240 / 2,000  [−200][+200]│ │  step hint inside the buttons (only when step > 1)
+│ │▌         ████████░░ 62%             │ │
 │ └───────────────────────────────────┘ │
 │ ┌───────────────────────────────────┐ │
-│ │ ...                               │ │
+│ │ ...                               │ │  about 8 cards fit on a 390 × 844 phone screen
 │ └───────────────────────────────────┘ │
 │                              ( + Item )│  floating add button
 └───────────────────────────────────────┘
 ```
+
+- **About** shows the app version from `package.json` (`0.1.0` for now), injected at build time.
 
 ### 6.2 Jar tabs
 

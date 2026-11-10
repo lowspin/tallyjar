@@ -18,6 +18,8 @@ const props = defineProps<{
   step: number
   disabled: boolean
   label: string
+  /** Small text under the icon, e.g. "+200" when the step is larger than 1. */
+  hint?: string
 }>()
 
 const emit = defineEmits<{ change: [delta: number, kind: TapKind | 'repeat'] }>()
@@ -104,17 +106,19 @@ onBeforeUnmount(stop)
     @click="onClick"
     @contextmenu.prevent
   >
-    <AppIcon :name="direction > 0 ? 'plus' : 'minus'" :size="28" />
+    <AppIcon :name="direction > 0 ? 'plus' : 'minus'" :size="hint ? 18 : 24" />
+    <span v-if="hint" class="count-button__hint tabular" aria-hidden="true">{{ hint }}</span>
   </button>
 </template>
 
 <style scoped>
 .count-button {
   display: grid;
-  place-items: center;
-  width: 100%;
-  min-width: 48px;
-  height: 56px;
+  place-content: center;
+  justify-items: center;
+  /* 48 px is the minimum tap target (REQUIREMENTS §5.1). */
+  width: 56px;
+  height: 48px;
   padding: 0;
   border: 0;
   border-radius: var(--radius-pill);
@@ -122,6 +126,19 @@ onBeforeUnmount(stop)
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+}
+
+@media (max-width: 380px) {
+  .count-button {
+    width: 48px;
+  }
+}
+
+.count-button__hint {
+  margin-top: 1px;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .count-button--plus {

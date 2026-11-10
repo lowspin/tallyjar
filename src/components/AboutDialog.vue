@@ -2,6 +2,7 @@
 import { useTemplateRef, watch } from 'vue'
 import AppIcon from './AppIcon.vue'
 import { LOGO_URL } from '@/lib/assets'
+import { APP_VERSION } from '@/lib/version'
 
 const open = defineModel<boolean>({ required: true })
 const dialog = useTemplateRef<HTMLDialogElement>('dialog')
@@ -31,6 +32,7 @@ watch(open, (value) => {
       </button>
       <img :src="LOGO_URL" alt="" width="72" height="72" />
       <h2 id="about-title">Tallyjar</h2>
+      <p class="version tabular">Version {{ APP_VERSION }}</p>
       <p>A calm, friendly way to count things.</p>
       <p class="muted">
         Everything you count stays on this device. There's no account and nothing is sent anywhere.
@@ -74,6 +76,13 @@ h2 {
 
 p {
   margin: 0 0 var(--space-3);
+}
+
+.version {
+  margin-top: calc(-1 * var(--space-1));
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
 }
 
 .muted {

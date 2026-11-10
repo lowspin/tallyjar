@@ -174,7 +174,7 @@ async function onDuplicate(collectionId: string) {
 .list {
   position: relative;
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 /* Drag states (classes added by Sortable on the card root). */

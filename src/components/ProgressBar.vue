@@ -40,12 +40,12 @@ const percent = computed(() => percentOf(props.count, props.target))
 .progress {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .progress__track {
   flex: 1;
-  height: 10px;
+  height: 6px;
   overflow: hidden;
   border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--item) 28%, var(--color-surface));
@@ -62,7 +62,8 @@ const percent = computed(() => percentOf(props.count, props.target))
 .progress__percent {
   min-width: 4ch;
   text-align: right;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
+  line-height: 1;
   font-weight: 700;
   color: var(--color-text-muted);
 }
