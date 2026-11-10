@@ -20,6 +20,18 @@ export function percentOf(count: number, target: number): number {
   return Math.floor((count / target) * 100)
 }
 
+/** "1 jar", "41 items". */
+export function plural(n: number, word: string, plural = word + 's'): string {
+  return `${formatCount(n)} ${n === 1 ? word : plural}`
+}
+
+/** File sizes like "840 KB" or "1.2 MB". */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 /** Signed amount for hints and pop labels, e.g. "+200", "−200" (true minus sign). */
 export function formatSigned(n: number): string {
   return (n < 0 ? '−' : '+') + formatCount(Math.abs(n))

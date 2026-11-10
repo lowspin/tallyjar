@@ -1,5 +1,6 @@
 import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { reactive } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { db } from '@/db/db'
 import * as repo from '@/db/repo'
@@ -8,6 +9,8 @@ import { useSettingsStore } from '@/stores/settings'
 import { useCollectionsStore } from '@/stores/collections'
 import { COUNT_WRITE_DELAY_MS, useItemsStore } from '@/stores/items'
 import { UNSAVED_COUNTS_KEY, recoverUnsavedCounts } from '@/lib/unsavedCounts'
+import { BACKUP_STALE_MS, REMINDER_SNOOZE_MS, useBackupStore } from '@/stores/backup'
+import { createBackup, parseBackup, serializeBackup } from '@/db/backup'
 
 const TEAL = '#5EC4C4'
 
@@ -21,6 +24,7 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
@@ -265,5 +269,82 @@ describe('items store', () => {
     expect((await repo.listItems(x.collectionId)).map((i) => i.name)).toEqual(['Y', 'X'])
     await items.remove(y.id)
     expect(items.items.map((i) => i.name)).toEqual(['X'])
+  })
+})
+
+describe('backup store', () => {
+  async function setup(itemCount: number) {
+    await useSettingsStore().init()
+    const collections = useCollectionsStore()
+    const items = useItemsStore()
+    const backup = useBackupStore()
+    await collections.load()
+    await collections.create({ name: 'Jar', color: TEAL })
+    await settle()
+    for (let i = 0; i < itemCount; i++) await items.create({ name: `Item ${i}`, color: TEAL })
+    await settle()
+    return { settings: useSettingsStore(), collections, items, backup }
+  }
+
+  it('shows the reminder from 10 items when there is no recent export', async () => {
+    const { items, backup, settings } = await setup(9)
+    expect(backup.showReminder).toBe(false)
+    await items.create({ name: 'Tenth', color: TEAL })
+    await settle()
+    expect(backup.totalItems).toBe(10)
+    expect(backup.showReminder).toBe(true)
+
+    await settings.markExported(Date.now() - BACKUP_STALE_MS + 60_000)
+    expect(backup.showReminder).toBe(false)
+    await settings.markExported(Date.now() - BACKUP_STALE_MS - 60_000)
+    expect(backup.showReminder).toBe(true)
+  })
+
+  it('dismissing snoozes the reminder for two weeks, persisted', async () => {
+    const { backup } = await setup(10)
+    await backup.snoozeReminder()
+    expect(backup.showReminder).toBe(false)
+    const until = (await repo.getSettings())!.backupReminderSnoozedUntil!
+    expect(until - Date.now()).toBeGreaterThan(REMINDER_SNOOZE_MS - 60_000)
+  })
+
+  it('Replace import reloads the open jar and drops stale unsaved counts', async () => {
+    const { items, backup } = await setup(1)
+    const item = items.items[0]!
+    await items.update(item.id, { count: 5 })
+    const text = serializeBackup(await createBackup())
+
+    items.setCount(item.id, 99) // pending, newer than the backup
+    await backup.runImport(parseBackup(text), 'replace')
+    await new Promise((r) => setTimeout(r, COUNT_WRITE_DELAY_MS + 50))
+
+    expect(items.items.map((i) => [i.id, i.count])).toEqual([[item.id, 5]])
+    expect((await repo.getItem(item.id))!.count).toBe(5)
+    expect(localStorage.getItem(UNSAVED_COUNTS_KEY)).toBeNull()
+  })
+
+  it('accepts a backup held in reactive state (IndexedDB cannot clone proxies)', async () => {
+    const { collections, backup } = await setup(1)
+    const text = serializeBackup(await createBackup())
+    // fake-indexeddb clones proxies happily; browsers throw DataCloneError. Check like a browser.
+    for (const table of [db.collections, db.items]) {
+      const original = table.bulkAdd.bind(table) as (rows: unknown[]) => Promise<unknown>
+      vi.spyOn(table, 'bulkAdd').mockImplementation(((rows: unknown[]) => {
+        structuredClone(rows)
+        return original(rows)
+      }) as never)
+    }
+    await backup.runImport(reactive(parseBackup(text)), 'replace')
+    expect(collections.collections).toHaveLength(1)
+  })
+
+  it('Add as new opens the first imported jar', async () => {
+    const { collections, items, backup } = await setup(2)
+    const text = serializeBackup(await createBackup())
+    const result = await backup.runImport(parseBackup(text), 'add')
+    expect(collections.collections).toHaveLength(2)
+    expect(collections.activeId).toBe(result.collectionIds[0])
+    expect(items.items.map((i) => i.name)).toEqual(['Item 0', 'Item 1'])
+    expect(backup.totalItems).toBe(4)
   })
 })

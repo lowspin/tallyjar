@@ -100,6 +100,11 @@ export function countItems(collectionId: string): Promise<number> {
   return db.items.where('collectionId').equals(collectionId).count()
 }
 
+/** Number of items across all jars. */
+export function countAllItems(): Promise<number> {
+  return db.items.count()
+}
+
 /** Deletes a collection with all of its items and their images, atomically. */
 export async function deleteCollection(id: string): Promise<void> {
   await db.transaction('rw', db.collections, db.items, db.images, async () => {
@@ -287,6 +292,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lastExportAt: null,
   persistRequested: false,
   persisted: null,
+  backupReminderSnoozedUntil: null,
 }
 
 /** Returns the settings row, or null on a fresh install where none exists yet. */

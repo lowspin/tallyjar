@@ -42,6 +42,8 @@ export interface Settings {
   persistRequested: boolean
   /** Result of navigator.storage.persist(); null until requested or when unsupported. */
   persisted: boolean | null
+  /** The backup reminder stays hidden until this time after being dismissed. */
+  backupReminderSnoozedUntil: number | null
 }
 
 /** Fields a user can set when creating a collection. */

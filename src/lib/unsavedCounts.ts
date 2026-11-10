@@ -53,6 +53,12 @@ export function forgetUnsaved(id: string) {
   if (unsaved.delete(id)) persist()
 }
 
+/** Drops every unsaved value, e.g. after a backup replaced all items. */
+export function clearUnsaved() {
+  unsaved.clear()
+  persist()
+}
+
 /** Applies counts left over from a previous session, then clears them. */
 export async function recoverUnsavedCounts(
   write: (id: string, count: number) => Promise<void>,

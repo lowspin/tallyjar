@@ -114,6 +114,7 @@ interface Settings {
   lastExportAt: number | null
   persistRequested: boolean
   persisted: boolean | null // result of storage.persist(); null if unsupported
+  backupReminderSnoozedUntil: number | null // backup banner hidden until then after dismissal
 }
 ```
 
@@ -321,7 +322,7 @@ Format:
 ### 7.3 Data safety
 
 - On first launch, call `navigator.storage.persist()` and record the result.
-- If `lastExportAt` is null or more than 30 days old **and** the user has at least 10 items, show a dismissible banner: "Your counts live only on this device. Export a backup?"
+- If `lastExportAt` is null or more than 30 days old **and** the user has at least 10 items, show a dismissible banner: "Your counts live only on this device. Export a backup?" Dismissing it hides it for 14 days (`settings.backupReminderSnoozedUntil`).
 - On iOS Safari when not installed (`!matchMedia('(display-mode: standalone)').matches`), show a one-time tip to "Add to Home Screen" so storage is less likely to be evicted.
 
 ---

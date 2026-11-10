@@ -37,6 +37,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const lastExportAt = ref<number | null>(null)
   const persistRequested = ref(false)
   const persisted = ref<boolean | null>(null)
+  const backupReminderSnoozedUntil = ref<number | null>(null)
   const loaded = ref(false)
 
   const systemDark = usePreferredDark()
@@ -56,6 +57,7 @@ export const useSettingsStore = defineStore('settings', () => {
     lastExportAt.value = row.lastExportAt
     persistRequested.value = row.persistRequested
     persisted.value = row.persisted
+    backupReminderSnoozedUntil.value = row.backupReminderSnoozedUntil
   }
 
   async function save(patch: Partial<Omit<Settings, 'key'>>) {
@@ -97,6 +99,11 @@ export const useSettingsStore = defineStore('settings', () => {
     return save({ lastExportAt: at })
   }
 
+  function snoozeBackupReminder(until: number) {
+    backupReminderSnoozedUntil.value = until
+    return save({ backupReminderSnoozedUntil: until })
+  }
+
   return {
     theme,
     resolvedTheme,
@@ -104,10 +111,12 @@ export const useSettingsStore = defineStore('settings', () => {
     lastExportAt,
     persistRequested,
     persisted,
+    backupReminderSnoozedUntil,
     loaded,
     init,
     setTheme,
     setLastCollection,
     markExported,
+    snoozeBackupReminder,
   }
 })

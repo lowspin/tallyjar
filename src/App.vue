@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, useTemplateRef } from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import AboutDialog from './components/AboutDialog.vue'
 import UpdateToast from './components/UpdateToast.vue'
@@ -10,9 +10,13 @@ import AppIcon from './components/AppIcon.vue'
 import ItemList from './components/ItemList.vue'
 import ItemEditor from './components/editors/ItemEditor.vue'
 import AppToasts from './components/AppToasts.vue'
+import BackupReminder from './components/BackupReminder.vue'
+import ExportDialog from './components/editors/ExportDialog.vue'
+import ImportDialog from './components/editors/ImportDialog.vue'
 import { useSettingsStore } from './stores/settings'
 import { useCollectionsStore } from './stores/collections'
 import { useItemsStore } from './stores/items'
+import { useBackupStore } from './stores/backup'
 import { LOGO_URL } from './lib/assets'
 import { recoverUnsavedCounts } from './lib/unsavedCounts'
 import { setCount } from './db/repo'
@@ -23,6 +27,7 @@ import type { Collection, Item } from './db/types'
 const settings = useSettingsStore()
 const collections = useCollectionsStore()
 const items = useItemsStore()
+useBackupStore() // starts tracking the item total for the backup reminder
 
 const aboutOpen = ref(false)
 const loadError = ref(false)
@@ -55,6 +60,26 @@ function editItem(item: Item) {
   itemEditorOpen.value = true
 }
 
+// Export / import.
+const exportOpen = ref(false)
+const importOpen = ref(false)
+const importFile = ref<File | null>(null)
+const filePicker = useTemplateRef<HTMLInputElement>('filePicker')
+
+function pickImportFile() {
+  // Called synchronously from the menu click, so the picker counts as user-initiated.
+  filePicker.value?.click()
+}
+
+function onFilePicked(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = '' // so picking the same file again still fires `change`
+  if (!file) return
+  importFile.value = file
+  importOpen.value = true
+}
+
 onMounted(async () => {
   try {
     await settings.init()
@@ -70,11 +95,12 @@ onMounted(async () => {
 
 <template>
   <div class="top">
-    <AppHeader @about="aboutOpen = true" />
+    <AppHeader @about="aboutOpen = true" @export="exportOpen = true" @import="pickImportFile" />
     <JarTabs v-if="collections.collections.length" @create="newJar" @edit="editJar" />
   </div>
 
   <main class="main">
+    <BackupReminder v-if="!loadError" @export="exportOpen = true" />
     <section v-if="loadError" class="empty" role="alert">
       <img :src="LOGO_URL" alt="" width="96" height="96" />
       <h2>Couldn’t open your jars</h2>
@@ -119,6 +145,17 @@ onMounted(async () => {
   <ItemEditor v-model="itemEditorOpen" :item="editingItem" />
   <ConfirmDialog />
   <AboutDialog v-model="aboutOpen" />
+  <ExportDialog v-model="exportOpen" />
+  <ImportDialog v-model="importOpen" :file="importFile" />
+  <input
+    ref="filePicker"
+    class="visually-hidden"
+    type="file"
+    accept=".json,application/json"
+    tabindex="-1"
+    aria-hidden="true"
+    @change="onFilePicked"
+  />
   <AppToasts />
   <UpdateToast />
 </template>

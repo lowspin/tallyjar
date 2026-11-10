@@ -20,9 +20,6 @@ const themeOptions: { value: ThemePreference; label: string; icon: IconName }[] 
   { value: 'dark', label: 'Dark', icon: 'moon' },
 ]
 
-// Export and import arrive in Phase 5.
-const backupReady = false
-
 function menuItems(): HTMLElement[] {
   return Array.from(
     menu.value?.querySelectorAll<HTMLElement>('[role^="menuitem"]:not([aria-disabled="true"])') ??
@@ -133,8 +130,7 @@ function pick(action: 'export' | 'import' | 'about') {
             role="menuitem"
             type="button"
             tabindex="-1"
-            :aria-disabled="!backupReady"
-            @click="backupReady && pick('export')"
+            @click="pick('export')"
           >
             <AppIcon name="download" /> Export backup
           </button>
@@ -143,8 +139,7 @@ function pick(action: 'export' | 'import' | 'about') {
             role="menuitem"
             type="button"
             tabindex="-1"
-            :aria-disabled="!backupReady"
-            @click="backupReady && pick('import')"
+            @click="pick('import')"
           >
             <AppIcon name="upload" /> Import backup
           </button>
