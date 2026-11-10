@@ -2,10 +2,12 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import * as repo from '@/db/repo'
 import { assertCount } from '@/db/validate'
+import { applyDelta } from '@/lib/clamp'
+import { forgetUnsaved, markSaved, markUnsaved } from '@/lib/unsavedCounts'
 import type { ImageInput, Item, ItemInput, ItemPatch } from '@/db/types'
 import { useCollectionsStore } from './collections'
 
-/** Delay before a count change is written, so hold-to-repeat doesn't hammer IndexedDB. */
+/** At most one count write per this window, so hold-to-repeat doesn't hammer IndexedDB. */
 export const COUNT_WRITE_DELAY_MS = 300
 
 /** Holds the items of the active jar. */
@@ -16,21 +18,34 @@ export const useItemsStore = defineStore('items', () => {
   const items = ref<Item[]>([])
   const loaded = ref(false)
 
-  // ─── Debounced count writes ───────────────────────────────────────────────
+  // ─── Throttled count writes ───────────────────────────────────────────────
+  // The first change is written at once, so a single tap is saved even if the page closes
+  // right after. Changes that follow within COUNT_WRITE_DELAY_MS (taps in quick succession,
+  // hold-to-repeat) are batched into one trailing write per window.
   const pendingCounts = new Map<string, number>()
-  let flushTimer: ReturnType<typeof setTimeout> | null = null
+  let throttleTimer: ReturnType<typeof setTimeout> | null = null
+
+  function scheduleWrite() {
+    if (throttleTimer) return // the trailing write will include this change
+    void flushCounts()
+    throttleTimer = setTimeout(() => {
+      throttleTimer = null
+      if (pendingCounts.size) scheduleWrite()
+    }, COUNT_WRITE_DELAY_MS)
+  }
 
   /** Writes all pending count changes now. */
   async function flushCounts() {
-    if (flushTimer) clearTimeout(flushTimer)
-    flushTimer = null
     const writes = [...pendingCounts]
     pendingCounts.clear()
     await Promise.all(
       writes.map(([id, count]) =>
-        repo.setCount(id, count).catch((error) => {
-          console.error('Could not save count', error)
-        }),
+        repo
+          .setCount(id, count)
+          .then(() => markSaved(id, count))
+          .catch((error) => {
+            console.error('Could not save count', error)
+          }),
       ),
     )
   }
@@ -42,7 +57,7 @@ export const useItemsStore = defineStore('items', () => {
     window.addEventListener('pagehide', () => void flushCounts())
   }
 
-  /** Updates the count in the UI immediately and writes it shortly after. */
+  /** Updates the count in the UI immediately and writes it (throttled) to the database. */
   function setCount(id: string, count: number) {
     assertCount(count)
     const item = items.value.find((i) => i.id === id)
@@ -50,8 +65,28 @@ export const useItemsStore = defineStore('items', () => {
     item.count = count
     item.updatedAt = Date.now()
     pendingCounts.set(id, count)
-    if (flushTimer) clearTimeout(flushTimer)
-    flushTimer = setTimeout(() => void flushCounts(), COUNT_WRITE_DELAY_MS)
+    markUnsaved(id, count) // synchronous backup in case the page unloads mid-write
+    scheduleWrite()
+  }
+
+  /**
+   * Adds `delta` (negative to subtract) following the clamping rules.
+   * Returns the new count, or null if nothing changed (at a limit).
+   */
+  function adjust(id: string, delta: number): number | null {
+    const item = items.value.find((i) => i.id === id)
+    if (!item) return null
+    const next = applyDelta(item.count, delta, item)
+    if (next === item.count) return null
+    setCount(id, next)
+    return next
+  }
+
+  /** Sets the count back to the item's start count. */
+  function reset(id: string) {
+    const item = items.value.find((i) => i.id === id)
+    if (!item) return Promise.resolve(null)
+    return update(id, { count: item.startCount })
   }
 
   // ─── Loading ──────────────────────────────────────────────────────────────
@@ -87,16 +122,18 @@ export const useItemsStore = defineStore('items', () => {
   }
 
   async function update(id: string, patch: ItemPatch) {
-    // A pending debounced count must not overwrite an explicit edit.
+    // A pending throttled count must not overwrite an explicit edit.
     if (patch.count !== undefined) pendingCounts.delete(id)
     else await flushCounts()
     const updated = await repo.updateItem(id, patch)
+    if (patch.count !== undefined) forgetUnsaved(id)
     replace(updated)
     return updated
   }
 
   async function remove(id: string) {
     pendingCounts.delete(id)
+    forgetUnsaved(id)
     await repo.deleteItem(id)
     items.value = items.value.filter((i) => i.id !== id)
   }
@@ -143,6 +180,8 @@ export const useItemsStore = defineStore('items', () => {
     setImage,
     reorder,
     setCount,
+    adjust,
+    reset,
     flushCounts,
   }
 })

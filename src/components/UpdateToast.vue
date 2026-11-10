@@ -39,7 +39,8 @@ watch(offlineReady, (ready) => {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+  /* Above the floating add button. */
+  bottom: calc(88px + env(safe-area-inset-bottom));
   z-index: 50;
   display: flex;
   justify-content: center;

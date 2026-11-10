@@ -7,12 +7,17 @@ import JarTabs from './components/JarTabs.vue'
 import JarEditor from './components/editors/JarEditor.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import AppIcon from './components/AppIcon.vue'
+import ItemList from './components/ItemList.vue'
+import ItemEditor from './components/editors/ItemEditor.vue'
+import AppToasts from './components/AppToasts.vue'
 import { useSettingsStore } from './stores/settings'
 import { useCollectionsStore } from './stores/collections'
 import { useItemsStore } from './stores/items'
 import { LOGO_URL } from './lib/assets'
+import { recoverUnsavedCounts } from './lib/unsavedCounts'
+import { setCount } from './db/repo'
 import { JAR_PANEL_ID, jarTabId } from './lib/ids'
-import type { Collection } from './db/types'
+import type { Collection, Item } from './db/types'
 
 // Instantiate early so the theme watcher is active from the first render.
 const settings = useSettingsStore()
@@ -36,9 +41,25 @@ function editJar(jar: Collection) {
   jarEditorOpen.value = true
 }
 
+// Item editor: `editingItem` null means "new item in the open jar".
+const itemEditorOpen = ref(false)
+const editingItem = ref<Item | null>(null)
+
+function newItem() {
+  editingItem.value = null
+  itemEditorOpen.value = true
+}
+
+function editItem(item: Item) {
+  editingItem.value = item
+  itemEditorOpen.value = true
+}
+
 onMounted(async () => {
   try {
     await settings.init()
+    // Apply any counts that didn't reach IndexedDB before the app last closed.
+    await recoverUnsavedCounts(setCount)
     await collections.load()
   } catch (error) {
     console.error('Could not open the database', error)
@@ -75,16 +96,30 @@ onMounted(async () => {
       role="tabpanel"
       :aria-labelledby="jarTabId(collections.active.id)"
     >
-      <!-- Item list arrives in Phase 4. -->
       <div v-if="items.loaded && !items.items.length" class="empty empty--jar">
         <p>This jar is empty — add something to count.</p>
+        <button class="button" type="button" @click="newItem">
+          <AppIcon name="plus" :size="18" /> Add an item
+        </button>
       </div>
+      <ItemList v-else @edit="editItem" />
     </section>
   </main>
 
+  <button
+    v-if="collections.active && items.items.length"
+    class="button fab"
+    type="button"
+    @click="newItem"
+  >
+    <AppIcon name="plus" :size="20" /> Item
+  </button>
+
   <JarEditor v-model="jarEditorOpen" :jar="editingJar" />
+  <ItemEditor v-model="itemEditorOpen" :item="editingItem" />
   <ConfirmDialog />
   <AboutDialog v-model="aboutOpen" />
+  <AppToasts />
   <UpdateToast />
 </template>
 
@@ -124,5 +159,16 @@ onMounted(async () => {
 
 .empty--jar {
   margin-top: 14vh;
+}
+
+.fab {
+  position: fixed;
+  right: max(var(--space-4), calc((100vw - 720px) / 2 + var(--space-4)));
+  bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+  z-index: 20;
+  min-height: 56px;
+  padding: 0 var(--space-5) 0 var(--space-4);
+  box-shadow: var(--shadow-popover);
+  font-size: 1.0625rem;
 }
 </style>

@@ -7,6 +7,7 @@ import { THEME_STORAGE_KEY } from '@/lib/theme'
 import { useSettingsStore } from '@/stores/settings'
 import { useCollectionsStore } from '@/stores/collections'
 import { COUNT_WRITE_DELAY_MS, useItemsStore } from '@/stores/items'
+import { UNSAVED_COUNTS_KEY, recoverUnsavedCounts } from '@/lib/unsavedCounts'
 
 const TEAL = '#5EC4C4'
 
@@ -176,21 +177,57 @@ describe('items store', () => {
     expect(items.items.map((i) => i.name)).toEqual(['X'])
   })
 
-  it('updates counts immediately and writes them after a short debounce', async () => {
+  it('writes a single change straight away', async () => {
+    const { items } = await setup()
+    const item = await items.create({ name: 'X', color: TEAL })
+    items.setCount(item.id, 1)
+    expect(items.items[0]!.count).toBe(1)
+    await settle() // well under COUNT_WRITE_DELAY_MS
+    expect((await repo.getItem(item.id))!.count).toBe(1)
+  })
+
+  it('batches rapid changes into one trailing write', async () => {
     const { items } = await setup()
     const item = await items.create({ name: 'X', color: TEAL })
 
-    vi.useFakeTimers()
-    items.setCount(item.id, 1)
+    items.setCount(item.id, 1) // leading write
     items.setCount(item.id, 2)
     items.setCount(item.id, 3)
     expect(items.items[0]!.count).toBe(3)
-    expect((await repo.getItem(item.id))!.count).toBe(0)
-
-    await vi.advanceTimersByTimeAsync(COUNT_WRITE_DELAY_MS)
-    vi.useRealTimers()
     await settle()
+    expect((await repo.getItem(item.id))!.count).toBe(1)
+
+    await new Promise((r) => setTimeout(r, COUNT_WRITE_DELAY_MS + 50))
     expect((await repo.getItem(item.id))!.count).toBe(3)
+  })
+
+  it('keeps a synchronous localStorage copy of a count until IndexedDB has it', async () => {
+    const { items } = await setup()
+    const item = await items.create({ name: 'X', color: TEAL })
+    items.setCount(item.id, 7)
+    expect(JSON.parse(localStorage.getItem(UNSAVED_COUNTS_KEY)!)).toMatchObject({ [item.id]: 7 })
+    await settle()
+    expect((await repo.getItem(item.id))!.count).toBe(7)
+    expect(localStorage.getItem(UNSAVED_COUNTS_KEY)).toBeNull()
+  })
+
+  it('recovers counts left over from a session that closed mid-write', async () => {
+    const jar = await repo.createCollection({ name: 'Jar', color: TEAL })
+    const item = await repo.createItem(jar.id, { name: 'X', color: TEAL })
+    localStorage.setItem(UNSAVED_COUNTS_KEY, JSON.stringify({ [item.id]: 42, gone: 5, bad: -1 }))
+    const recovered = await recoverUnsavedCounts(repo.setCount)
+    expect(recovered).toBe(1)
+    expect((await repo.getItem(item.id))!.count).toBe(42)
+    expect(localStorage.getItem(UNSAVED_COUNTS_KEY)).toBeNull()
+  })
+
+  it('an explicit count edit clears the unsaved copy', async () => {
+    const { items } = await setup()
+    const item = await items.create({ name: 'X', color: TEAL })
+    items.setCount(item.id, 5)
+    await items.update(item.id, { count: 100 })
+    await new Promise((r) => setTimeout(r, COUNT_WRITE_DELAY_MS + 50))
+    expect(localStorage.getItem(UNSAVED_COUNTS_KEY)).toBeNull()
   })
 
   it('flushes pending counts when the page is hidden', async () => {
