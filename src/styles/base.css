@@ -73,7 +73,7 @@ button {
 }
 
 .icon-button:hover {
-  background: color-mix(in oklch, var(--color-text) 6%, transparent);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
 }
 
 .button {
@@ -96,6 +96,83 @@ button {
 }
 
 .button--quiet {
-  background: color-mix(in oklch, var(--color-text) 8%, transparent);
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
   color: var(--color-text);
+}
+
+.button--danger {
+  background: var(--color-danger);
+  color: var(--color-on-danger);
+}
+
+.button--text-danger {
+  background: transparent;
+  color: var(--color-danger);
+  padding: 0 var(--space-3);
+}
+
+/* ─── Forms ─────────────────────────────────────────────────────────────── */
+
+.field {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.field__label {
+  display: flex;
+  justify-content: space-between;
+  padding: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.field__meta {
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 var(--space-4);
+  border: 1.5px solid color-mix(in srgb, var(--color-text) 30%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  font-size: 1rem;
+}
+
+.input:focus-visible {
+  border-color: var(--color-primary);
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
+.field__error {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-danger);
+}
+
+.field__hint {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+html:has(dialog[open]) {
+  overflow: hidden;
+}
+
+/* Editor sheets have a close (×) button, so drop "Cancel" where space is tight. */
+@media (max-width: 400px) {
+  .button--cancel {
+    display: none;
+  }
 }

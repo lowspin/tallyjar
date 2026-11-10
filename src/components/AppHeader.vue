@@ -190,16 +190,11 @@ function pick(action: 'export' | 'import' | 'about') {
 
 <style scoped>
 .app-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: calc(var(--space-2) + env(safe-area-inset-top)) var(--space-3) var(--space-2)
     var(--space-4);
-  background: color-mix(in oklch, var(--color-bg) 88%, transparent);
-  backdrop-filter: blur(12px);
 }
 
 .brand {
@@ -248,7 +243,7 @@ function pick(action: 'export' | 'import' | 'about') {
 
 .menu__item:hover,
 .menu__item:focus-visible {
-  background: color-mix(in oklch, var(--color-primary) 12%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
 .menu__item[aria-disabled='true'] {

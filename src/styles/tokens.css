@@ -6,6 +6,8 @@
   --color-text: #243036;
   --color-text-muted: rgb(36 48 54 / 0.65);
   --color-success: #4a9a5e;
+  --color-danger: #b4413c;
+  --color-on-danger: #ffffff;
   --color-border: rgb(36 48 54 / 0.1);
   --color-backdrop: rgb(15 23 28 / 0.35);
 
@@ -30,7 +32,7 @@
   --duration-fast: 150ms;
   --duration-base: 250ms;
 
-  --focus-ring: 0 0 0 3px color-mix(in oklch, var(--color-primary) 45%, transparent);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-primary) 45%, transparent);
 
   color-scheme: light;
 }
@@ -43,6 +45,8 @@
   --color-text: #ebe7e0;
   --color-text-muted: rgb(235 231 224 / 0.65);
   --color-success: #82c393;
+  --color-danger: #e8908a;
+  --color-on-danger: #0f171c;
   --color-border: rgb(255 255 255 / 0.06);
   --color-backdrop: rgb(0 0 0 / 0.5);
 
