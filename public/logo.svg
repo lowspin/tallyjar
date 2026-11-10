@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#FDFAF4"/>
+  <!-- lid -->
+  <rect x="168" y="84" width="176" height="52" rx="20" fill="#258484"/>
+  <!-- jar body -->
+  <path d="M186 136 h140 v22 c0 10 8 18 18 26 c30 22 50 50 50 92 v120 c0 38 -30 64 -66 64 h-144 c-36 0 -66 -26 -66 -64 v-120 c0 -42 20 -70 50 -92 c10 -8 18 -16 18 -26 z"
+        fill="#DDF0EE" stroke="#258484" stroke-width="22" stroke-linejoin="round"/>
+  <!-- tally marks -->
+  <g stroke="#258484" stroke-width="20" stroke-linecap="round">
+    <line x1="206" y1="262" x2="206" y2="380"/>
+    <line x1="242" y1="262" x2="242" y2="380"/>
+    <line x1="278" y1="262" x2="278" y2="380"/>
+    <line x1="314" y1="262" x2="314" y2="380"/>
+    <line x1="182" y1="356" x2="338" y2="282"/>
+  </g>
+</svg>
