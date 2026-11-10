@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'

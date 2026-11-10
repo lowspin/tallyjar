@@ -1,15 +1,28 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import AboutDialog from './components/AboutDialog.vue'
 import UpdateToast from './components/UpdateToast.vue'
 import { useSettingsStore } from './stores/settings'
+import { useCollectionsStore } from './stores/collections'
+import { useItemsStore } from './stores/items'
 import { LOGO_URL } from './lib/assets'
 
 // Instantiate early so the theme watcher is active from the first render.
-useSettingsStore()
+const settings = useSettingsStore()
+const collections = useCollectionsStore()
+useItemsStore() // follows the active jar
 
 const aboutOpen = ref(false)
+
+onMounted(async () => {
+  try {
+    await settings.init()
+    await collections.load()
+  } catch (error) {
+    console.error('Could not open the database', error)
+  }
+})
 </script>
 
 <template>
