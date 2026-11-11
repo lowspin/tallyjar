@@ -278,7 +278,7 @@ async function remove() {
 
       <NumberField
         v-model="stepText"
-        label="Double-tap step"
+        label="Hold step"
         :error="stepError"
         :hint="stepHint"
         @input="touchStep"
@@ -369,44 +369,6 @@ async function remove() {
 }
 
 .switch input:focus-visible + .switch__track {
-  box-shadow: var(--focus-ring);
-}
-
-/* Segmented control */
-.segmented {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  padding: 4px;
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--color-text) 8%, transparent);
-}
-
-.segment {
-  position: relative;
-  cursor: pointer;
-}
-
-.segment input {
-  position: absolute;
-  opacity: 0;
-}
-
-.segment span {
-  display: grid;
-  place-items: center;
-  min-height: 40px;
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-pill);
-  font-weight: 700;
-  text-align: center;
-}
-
-.segment input:checked + span {
-  background: var(--color-surface);
-  box-shadow: var(--shadow-card);
-}
-
-.segment input:focus-visible + span {
   box-shadow: var(--focus-ring);
 }
 

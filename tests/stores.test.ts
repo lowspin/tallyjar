@@ -73,6 +73,15 @@ describe('settings store', () => {
     await settle()
     expect((await repo.getSettings())!.theme).toBe('dark')
   })
+
+  it('defaults to showing done items and persists the hide-done filter', async () => {
+    const settings = useSettingsStore()
+    await settings.init()
+    expect(settings.hideDone).toBe(false)
+    settings.setHideDone(true)
+    await settle()
+    expect((await repo.getSettings())!.hideDone).toBe(true)
+  })
 })
 
 describe('collections store', () => {

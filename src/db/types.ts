@@ -44,6 +44,8 @@ export interface Settings {
   persisted: boolean | null
   /** The backup reminder stays hidden until this time after being dismissed. */
   backupReminderSnoozedUntil: number | null
+  /** Show only items that haven't reached their target. */
+  hideDone: boolean
 }
 
 /** Fields a user can set when creating a collection. */

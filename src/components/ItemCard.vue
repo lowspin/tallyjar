@@ -2,41 +2,48 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
 import AppIcon from './AppIcon.vue'
 import CountButton from './CountButton.vue'
-import ProgressBar from './ProgressBar.vue'
+import CountSlider from './CountSlider.vue'
 import ItemThumb from './ItemThumb.vue'
 import { useItemsStore } from '@/stores/items'
-import { canDecrement, canIncrement, isLocked, isReached } from '@/lib/clamp'
-import { formatCompact, formatCount, formatSigned } from '@/lib/format'
+import { canDecrement, canIncrement, clampCount, isReached } from '@/lib/clamp'
+import { formatCompact, formatCount, formatSigned, percentOf } from '@/lib/format'
 import { textOn } from '@/lib/palette'
-import type { TapKind } from '@/lib/taps'
+import type { PressKind } from '@/lib/taps'
 import type { Item } from '@/db/types'
 
-const props = defineProps<{ item: Item }>()
+const props = withDefaults(
+  defineProps<{
+    item: Item
+    /** False hides the drag handle (reordering is off while the list is filtered). */
+    reorderable?: boolean
+  }>(),
+  { reorderable: true },
+)
 const emit = defineEmits<{ 'open-count': [item: Item]; 'open-menu': [item: Item] }>()
 
 const store = useItemsStore()
 
 const reached = computed(() => isReached(props.item.count, props.item.target))
-const locked = computed(() => isLocked(props.item))
-const done = computed(() => locked.value && !canIncrement(props.item.count, props.item))
-/** Shown inside the −/+ buttons when a double tap does more than ±1. */
-function stepHint(sign: 1 | -1): string | undefined {
+const percent = computed(() =>
+  props.item.target === null ? 0 : percentOf(props.item.count, props.item.target),
+)
+
+/** Signed step for the float label; compact from 1,000 up so it stays short. */
+function signedStep(sign: 1 | -1): string {
   const { step } = props.item
-  if (step <= 1) return undefined
-  // Long steps use the compact form so the hint fits inside the button.
-  return step >= 10_000 ? (sign > 0 ? '+' : '−') + formatCompact(step) : formatSigned(sign * step)
+  return step >= 1000 ? (sign > 0 ? '+' : '−') + formatCompact(step) : formatSigned(sign * step)
 }
 
 const plusLabel = computed(() => {
   const { name, step } = props.item
   return step > 1
-    ? `Add 1 to ${name}; double-tap or Shift to add ${formatCount(step)}`
+    ? `Add 1 to ${name}; hold or Shift to add ${formatCount(step)}`
     : `Add 1 to ${name}`
 })
 const minusLabel = computed(() => {
   const { name, step } = props.item
   return step > 1
-    ? `Subtract 1 from ${name}; double-tap or Shift to subtract ${formatCount(step)}`
+    ? `Subtract 1 from ${name}; hold or Shift to subtract ${formatCount(step)}`
     : `Subtract 1 from ${name}`
 })
 
@@ -60,10 +67,11 @@ const shownTarget = computed(() => {
 })
 
 const COUNT_GAP_PX = 4 // matches the .count gap
+const EDIT_ICON_PX = 14 + COUNT_GAP_PX
 
 function fit() {
   if (!countBox.value || !measureValue.value) return
-  const room = countBox.value.clientWidth
+  const room = countBox.value.clientWidth - EDIT_ICON_PX
   const value = measureValue.value.offsetWidth
   const target = (el: HTMLElement | null) => (el ? COUNT_GAP_PX + el.offsetWidth : 0)
   if (value + target(measureTarget.value) <= room) compactLevel.value = 0
@@ -82,28 +90,33 @@ onMounted(() => {
 onBeforeUnmount(() => observer?.disconnect())
 watch([fullText, () => props.item.target], () => nextTick(fit))
 
-// ─── Feedback: count pop, double-tap label, target reached ──────────────────
+// ─── Counting ───────────────────────────────────────────────────────────────
 const popKey = ref(0)
 const floats = ref<{ id: number; text: string; side: 'minus' | 'plus' }[]>([])
 let floatId = 0
-const celebrate = ref(false)
-let celebrateTimer: ReturnType<typeof setTimeout> | null = null
 
-function onChange(delta: number, kind: TapKind | 'repeat') {
+function onChange(delta: number, kind: PressKind) {
   const next = store.adjust(props.item.id, delta)
   if (next === null) return
   popKey.value++
-  if (kind === 'double') {
+  // A hold's first ±step gets a floating label, so it's clear a step (not 1) was applied.
+  if (kind === 'step' && props.item.step > 1) {
     const sign = delta > 0 ? 1 : -1
     const id = ++floatId
-    floats.value.push({
-      id,
-      text: formatSigned(sign * props.item.step),
-      side: sign > 0 ? 'plus' : 'minus',
-    })
+    floats.value.push({ id, text: signedStep(sign), side: sign > 0 ? 'plus' : 'minus' })
     setTimeout(() => (floats.value = floats.value.filter((f) => f.id !== id)), 700)
   }
 }
+
+function onSlide(value: number) {
+  const next = clampCount(value, props.item)
+  if (next === props.item.count) return
+  store.setCount(props.item.id, next)
+}
+
+// ─── Target reached ─────────────────────────────────────────────────────────
+const celebrate = ref(false)
+let celebrateTimer: ReturnType<typeof setTimeout> | null = null
 
 watch(reached, (now, before) => {
   if (!now || before) return
@@ -118,25 +131,40 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
 <template>
   <article
     class="card"
-    :class="{ 'card--reached': reached, 'card--celebrate': celebrate }"
+    :class="{
+      'card--reached': reached,
+      'card--celebrate': celebrate,
+      'card--has-target': item.target !== null,
+    }"
     :style="{ '--item': item.color, '--item-text': textOn(item.color) }"
     :aria-label="item.name"
   >
     <!-- Pointer-only: keyboard and screen-reader users reorder with Move up/down in the menu. -->
-    <span class="drag-handle" aria-hidden="true" title="Drag to reorder">
+    <span
+      class="drag-handle"
+      :class="{ 'drag-handle--off': !reorderable }"
+      aria-hidden="true"
+      title="Drag to reorder"
+    >
       <AppIcon name="grip" :size="18" />
     </span>
 
-    <ItemThumb :name="item.name" :color="item.color" :image-id="item.imageId" :size="40" />
+    <!-- Done: the thumbnail becomes a check, so finished items can be spotted down the left edge. -->
+    <span v-if="reached" class="card__thumb done-mark" aria-hidden="true">
+      <AppIcon name="check" :size="26" />
+    </span>
+    <ItemThumb
+      v-else
+      class="card__thumb"
+      :name="item.name"
+      :color="item.color"
+      :image-id="item.imageId"
+      :size="40"
+    />
 
-    <div class="card__info">
-      <div class="card__title">
-        <h3 class="card__name">{{ item.name }}</h3>
-        <span v-if="reached" class="badge" role="img" aria-label="Target reached">
-          <AppIcon name="check" :size="12" />
-        </span>
-      </div>
+    <h3 class="card__name" :title="item.name">{{ item.name }}</h3>
 
+    <div class="card__count-row">
       <button
         ref="countBox"
         class="count"
@@ -152,6 +180,7 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
           {{ shownText }}
         </span>
         <span v-if="item.target !== null" class="count__target tabular"> / {{ shownTarget }} </span>
+        <AppIcon class="count__edit" name="pencil" :size="14" />
         <!-- Invisible copy of the row at full length, used to decide whether it fits. -->
         <span class="count__measure" aria-hidden="true">
           <span ref="measureValue" class="count__value tabular">{{ fullText }}</span>
@@ -165,25 +194,31 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
           </template>
         </span>
       </button>
-      <span class="visually-hidden" aria-live="polite">{{ item.name }}: {{ fullText }}</span>
 
-      <ProgressBar
-        v-if="item.target !== null"
-        :count="item.count"
-        :target="item.target"
-        :label="item.name"
-        :celebrate="celebrate"
-      />
+      <span v-if="reached" class="done-text">Done</span>
+      <span v-else-if="item.target !== null" class="percent tabular" aria-hidden="true">
+        {{ percent }}%
+      </span>
     </div>
+    <span class="visually-hidden" aria-live="polite">{{ item.name }}: {{ fullText }}</span>
+
+    <button
+      class="icon-button card__menu"
+      type="button"
+      :aria-label="`More actions for ${item.name}`"
+      aria-haspopup="dialog"
+      @click="emit('open-menu', item)"
+    >
+      <AppIcon name="menu-vertical" :size="20" />
+    </button>
 
     <div class="controls">
-      <div class="control">
+      <div class="control control--minus">
         <CountButton
           :direction="-1"
           :step="item.step"
           :disabled="!canDecrement(item.count)"
           :label="minusLabel"
-          :hint="stepHint(-1)"
           @change="onChange"
         />
         <TransitionGroup name="float">
@@ -197,18 +232,22 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
         </TransitionGroup>
       </div>
 
-      <div class="control">
-        <span v-if="done" class="done" role="status">
-          <AppIcon name="check" :size="22" />
-          <span class="visually-hidden">Done</span>
-        </span>
+      <CountSlider
+        v-if="item.target !== null"
+        class="card__slider"
+        :count="item.count"
+        :target="item.target"
+        :label="item.name"
+        :celebrate="celebrate"
+        @change="onSlide"
+      />
+
+      <div class="control control--plus">
         <CountButton
-          v-else
           :direction="1"
           :step="item.step"
           :disabled="!canIncrement(item.count, item)"
           :label="plusLabel"
-          :hint="stepHint(1)"
           @change="onChange"
         />
         <TransitionGroup name="float">
@@ -222,111 +261,122 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
         </TransitionGroup>
       </div>
     </div>
-
-    <button
-      class="icon-button card__menu"
-      type="button"
-      :aria-label="`More actions for ${item.name}`"
-      aria-haspopup="dialog"
-      @click="emit('open-menu', item)"
-    >
-      <AppIcon name="menu-vertical" :size="20" />
-    </button>
   </article>
 </template>
 
 <style scoped>
 /*
- * One compact row so about eight items fit on a phone screen:
- * [grip] [thumb] [name / count / progress] [− +] [⋮]
+ * The controls get the full width since they are what you touch most:
+ * [grip] [thumb] [name (wraps)       ] [⋮]
+ * [grip] [thumb] [count / target ✎   62%]
+ * [grip] [ − ] [━━━━━━━━●──────────] [ + ]   with a target: slider between − and +
+ * [grip] [   −    ] [           +            ]   without a target
  */
 .card {
-  --pad: var(--space-2);
+  --pad: 6px;
   position: relative;
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  grid-template-columns: 22px auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'grip thumb name menu'
+    'grip thumb count count'
+    'grip controls controls controls';
   align-items: center;
-  gap: var(--space-2);
-  min-height: 64px;
-  padding: var(--pad) 0;
+  column-gap: var(--space-2);
+  row-gap: 2px;
+  padding: var(--pad) var(--space-2) var(--pad) 0;
   /* The thick left border is the accent bar; it follows the rounded corners. */
-  border: 1.5px solid transparent;
+  border: 2px solid transparent;
   border-left: 5px solid var(--item);
   border-radius: 14px;
   background: color-mix(in oklch, var(--item) var(--tint-card), var(--color-surface));
   box-shadow: var(--shadow-card);
 }
 
-:root[data-theme='dark'] .card:not(.card--reached) {
+:root[data-theme='dark'] .card {
   border-color: rgb(255 255 255 / 0.06);
   border-left-color: var(--item);
 }
 
-.card--reached {
-  border-color: var(--item);
+/*
+ * Reached: the card steps back so the eye goes to unfinished items. Everything but the check
+ * and the Done text is dimmed, and comes back to full strength while the card is in use.
+ */
+.card--reached :is(.card__name, .count, .percent, .controls) {
+  opacity: 0.55;
 }
 
-/* Full-height strips at both ends: easy to hit without taking much width. */
-.drag-handle,
-.card__menu {
-  align-self: stretch;
-  margin-block: calc(-1 * var(--pad));
+.card--reached:is(:hover, :focus-within) :is(.card__name, .count, .percent, .controls) {
+  opacity: 1;
 }
 
 .drag-handle {
+  grid-area: grip;
+  align-self: stretch;
   display: grid;
   place-items: center;
-  width: 22px;
+  margin-block: calc(-1 * var(--pad));
   cursor: grab;
   touch-action: none;
   color: var(--color-text-muted);
 }
 
+.drag-handle--off {
+  visibility: hidden;
+}
+
+.card__thumb {
+  grid-area: thumb;
+}
+
+.done-mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--item);
+  color: var(--item-text);
+}
+
 .card__menu {
+  grid-area: menu;
+  align-self: start;
   width: 36px;
-  height: auto;
-  border-radius: 0 12px 12px 0;
+  height: 36px;
+  margin: -2px -4px 0 0;
   color: var(--color-text-muted);
 }
 
-.card__info {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.card__title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
+/* Up to two lines, so similar names stay distinguishable. */
 .card__name {
-  min-width: 0;
+  grid-area: name;
+  align-self: end;
+  display: -webkit-box;
   margin: 0;
   overflow: hidden;
   font-size: 0.9375rem;
   font-weight: 800;
   line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
-.badge {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  border-radius: var(--radius-pill);
-  background: var(--item);
-  color: var(--item-text);
+.card__count-row {
+  grid-area: count;
+  align-self: start;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
 .count {
   position: relative;
   display: flex;
+  flex: 1;
   align-items: baseline;
   gap: var(--space-1);
   min-width: 0;
@@ -341,20 +391,23 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
 
 .count__value {
   display: inline-block;
-  font-size: 1.3125rem;
+  font-size: 1.125rem;
   font-weight: 700;
   line-height: 1.15;
   letter-spacing: -0.01em;
-}
-
-.card--reached .count__value {
-  font-weight: 900;
 }
 
 .count__target {
   font-size: 0.8125rem;
   font-weight: 700;
   color: var(--color-text-muted);
+}
+
+.count__edit {
+  flex: none;
+  align-self: center;
+  color: var(--color-text-muted);
+  opacity: 0.7;
 }
 
 .count__measure {
@@ -368,33 +421,37 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
   pointer-events: none;
 }
 
+.percent {
+  flex: none;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+/* In place of the %, in the same style; not dimmed, so it reads with the ✓ thumbnail. */
+.done-text {
+  flex: none;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+/* ─── Controls row ─── */
 .controls {
-  display: flex;
+  grid-area: controls;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: center;
   gap: var(--space-2);
 }
 
-/* Small phones: give the name and count a little more room. */
-@media (max-width: 380px) {
-  .controls {
-    gap: 6px;
-  }
-  .done {
-    width: 48px;
-  }
+.card--has-target .controls {
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+  gap: var(--space-1);
 }
 
 .control {
   position: relative;
-}
-
-.done {
-  display: grid;
-  place-items: center;
-  width: 56px;
-  height: 48px;
-  border-radius: var(--radius-pill);
-  border: 2px solid var(--item);
-  color: var(--color-text);
 }
 
 .float {
@@ -424,12 +481,16 @@ onBeforeUnmount(() => celebrateTimer && clearTimeout(celebrateTimer))
       box-shadow var(--duration-base) var(--ease-out);
   }
 
-  .card--celebrate {
-    animation: glow 1200ms var(--ease-out) 1;
+  .card :is(.card__name, .count, .percent, .controls) {
+    transition: opacity var(--duration-base) var(--ease-out);
   }
 
-  .badge {
+  .done-mark {
     animation: badge-in 250ms var(--ease-out);
+  }
+
+  .card--celebrate {
+    animation: glow 1200ms var(--ease-out) 1;
   }
 
   .float-enter-active {

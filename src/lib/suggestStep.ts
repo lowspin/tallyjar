@@ -1,5 +1,5 @@
 /**
- * Suggests a double-tap step for a target (§6.5): 10% of the range, rounded down to the
+ * Suggests a hold step for a target (§6.5): 10% of the range, rounded down to the
  * nearest 1-2-5 number (1, 2, 5, 10, 20, 50, …), minimum 1.
  */
 export function suggestStep(startCount: number, target: number): number {

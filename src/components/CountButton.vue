@@ -3,51 +3,50 @@ import { onBeforeUnmount } from 'vue'
 import AppIcon from './AppIcon.vue'
 import {
   HOLD_DELAY_MS,
+  REPEAT_PAUSE_MS,
   REPEAT_START_MS,
-  createTapTracker,
   nextRepeatInterval,
-  type TapKind,
+  pressAmount,
+  type PressKind,
 } from '@/lib/taps'
 
 /**
- * A − or + button. Emits signed amounts; the parent applies them with the clamping rules
- * and passes `disabled` back when a limit is reached.
+ * A − or + button: tap = ±1, hold = ±step (then repeats while held).
+ * Emits signed amounts; the parent applies them with the clamping rules and passes
+ * `disabled` back when a limit is reached.
  */
 const props = defineProps<{
   direction: 1 | -1
   step: number
   disabled: boolean
   label: string
-  /** Small text under the icon, e.g. "+200" when the step is larger than 1. */
-  hint?: string
 }>()
 
-const emit = defineEmits<{ change: [delta: number, kind: TapKind | 'repeat'] }>()
+const emit = defineEmits<{ change: [delta: number, kind: PressKind] }>()
 
-const taps = createTapTracker()
 let pressing = false
-let repeating = false
+let held = false
 let holdTimer: ReturnType<typeof setTimeout> | null = null
 let repeatTimer: ReturnType<typeof setTimeout> | null = null
 let interval = REPEAT_START_MS
 
-function send(amount: number, kind: TapKind | 'repeat') {
+function send(amount: number, kind: PressKind) {
   if (!props.disabled) emit('change', props.direction * amount, kind)
 }
 
 function stop() {
   pressing = false
-  repeating = false
+  held = false
   if (holdTimer) clearTimeout(holdTimer)
   if (repeatTimer) clearTimeout(repeatTimer)
   holdTimer = repeatTimer = null
 }
 
-function tick() {
+function repeat() {
   if (!pressing || props.disabled) return stop()
   send(props.step, 'repeat')
   interval = nextRepeatInterval(interval)
-  repeatTimer = setTimeout(tick, interval)
+  repeatTimer = setTimeout(repeat, interval)
 }
 
 function onPointerDown(e: PointerEvent) {
@@ -55,19 +54,20 @@ function onPointerDown(e: PointerEvent) {
   stop()
   pressing = true
   holdTimer = setTimeout(() => {
-    repeating = true
-    taps.reset()
+    held = true
+    if ('vibrate' in navigator) navigator.vibrate?.(8)
+    send(props.step, 'step')
     interval = REPEAT_START_MS
-    tick()
+    repeatTimer = setTimeout(repeat, REPEAT_PAUSE_MS)
   }, HOLD_DELAY_MS)
 }
 
 function onPointerUp(e: PointerEvent) {
   if (!pressing) return
-  const wasRepeating = repeating
+  const wasHeld = held
   stop()
-  if (wasRepeating || props.disabled) return
-  const { amount, kind } = taps.tap(performance.now(), props.step, e.shiftKey)
+  if (wasHeld || props.disabled) return
+  const { amount, kind } = pressAmount(props.step, e.shiftKey)
   send(amount, kind)
 }
 
@@ -75,7 +75,7 @@ function onKeyDown(e: KeyboardEvent) {
   if (e.key !== 'Enter' && e.key !== ' ') return
   e.preventDefault() // we handle activation; no click follows
   if (props.disabled) return
-  const { amount, kind } = taps.key(props.step, e.shiftKey)
+  const { amount, kind } = pressAmount(props.step, e.shiftKey)
   send(amount, kind)
 }
 
@@ -83,7 +83,7 @@ function onClick(e: MouseEvent) {
   // Pointer and keyboard presses are handled above. A click with detail 0 comes from
   // assistive technology activating the button directly.
   if (e.detail !== 0 || props.disabled) return
-  const { amount, kind } = taps.key(props.step, e.shiftKey)
+  const { amount, kind } = pressAmount(props.step, e.shiftKey)
   send(amount, kind)
 }
 
@@ -96,6 +96,7 @@ onBeforeUnmount(stop)
     :class="direction > 0 ? 'count-button--plus' : 'count-button--minus'"
     type="button"
     :aria-label="label"
+    :title="label"
     :aria-disabled="disabled"
     @pointerdown="onPointerDown"
     @pointerup="onPointerUp"
@@ -106,39 +107,26 @@ onBeforeUnmount(stop)
     @click="onClick"
     @contextmenu.prevent
   >
-    <AppIcon :name="direction > 0 ? 'plus' : 'minus'" :size="hint ? 18 : 24" />
-    <span v-if="hint" class="count-button__hint tabular" aria-hidden="true">{{ hint }}</span>
+    <AppIcon :name="direction > 0 ? 'plus' : 'minus'" :size="18" />
   </button>
 </template>
 
 <style scoped>
 .count-button {
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  /* 48 px is the minimum tap target (REQUIREMENTS §5.1). */
-  width: 56px;
-  height: 48px;
-  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Low but wide: the buttons span the card, so they stay easy to hit (REQUIREMENTS §5.1). */
+  width: 100%;
+  min-width: 40px;
+  height: 32px;
+  padding: 0 var(--space-1);
   border: 0;
   border-radius: var(--radius-pill);
   touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
-}
-
-@media (max-width: 380px) {
-  .count-button {
-    width: 48px;
-  }
-}
-
-.count-button__hint {
-  margin-top: 1px;
-  font-size: 0.6875rem;
-  font-weight: 800;
-  line-height: 1;
 }
 
 .count-button--plus {

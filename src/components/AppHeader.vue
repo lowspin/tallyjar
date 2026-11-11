@@ -1,14 +1,28 @@
 <script setup lang="ts">
-import { nextTick, ref, useTemplateRef } from 'vue'
+import { computed, nextTick, ref, useTemplateRef } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import AppIcon, { type IconName } from './AppIcon.vue'
 import { useSettingsStore } from '@/stores/settings'
+import { useItemsStore } from '@/stores/items'
+import { isReached } from '@/lib/clamp'
 import type { ThemePreference } from '@/lib/theme'
 import { LOGO_URL } from '@/lib/assets'
 
+/**
+ * The top bar: logo, the jar tabs (default slot) and the actions. With no jars yet there are
+ * no tabs, so the app name is shown instead.
+ */
+defineProps<{ showTitle?: boolean }>()
 const emit = defineEmits<{ export: []; import: []; about: [] }>()
 
 const settings = useSettingsStore()
+const items = useItemsStore()
+
+// ─── Hide done filter ───────────────────────────────────────────────────────
+const doneCount = computed(() => items.items.filter((i) => isReached(i.count, i.target)).length)
+const filterLabel = computed(() =>
+  settings.hideDone ? `Show done items (${doneCount.value} hidden)` : 'Hide done items',
+)
 const open = ref(false)
 const root = useTemplateRef<HTMLElement>('root')
 const trigger = useTemplateRef<HTMLButtonElement>('trigger')
@@ -97,88 +111,114 @@ function pick(action: 'export' | 'import' | 'about') {
   <header class="app-header">
     <h1 class="brand">
       <img class="brand__logo" :src="LOGO_URL" alt="" width="32" height="32" />
-      Tallyjar
+      <span :class="{ 'visually-hidden': !showTitle }">Tallyjar</span>
     </h1>
 
-    <div ref="root" class="menu-wrap">
+    <div class="middle">
+      <slot />
+    </div>
+
+    <div class="actions">
       <button
-        ref="trigger"
-        class="icon-button"
+        v-if="items.items.length"
+        class="icon-button filter"
+        :class="{ 'filter--on': settings.hideDone }"
         type="button"
-        aria-label="Menu"
-        aria-haspopup="menu"
-        :aria-expanded="open"
-        aria-controls="app-menu"
-        @click="toggle"
-        @keydown="onTriggerKeydown"
+        :aria-label="filterLabel"
+        :title="filterLabel"
+        :aria-pressed="settings.hideDone"
+        @click="settings.setHideDone(!settings.hideDone)"
       >
-        <AppIcon name="menu" :size="24" />
+        <AppIcon name="funnel" :size="22" />
+        <span
+          v-if="settings.hideDone && doneCount"
+          class="filter__badge tabular"
+          aria-hidden="true"
+        >
+          {{ doneCount > 99 ? '99+' : doneCount }}
+        </span>
       </button>
 
-      <Transition name="pop">
-        <div
-          v-show="open"
-          id="app-menu"
-          ref="menu"
-          class="menu"
-          role="menu"
-          aria-label="App menu"
-          @keydown="onMenuKeydown"
+      <div ref="root" class="menu-wrap">
+        <button
+          ref="trigger"
+          class="icon-button"
+          type="button"
+          aria-label="Menu"
+          aria-haspopup="menu"
+          :aria-expanded="open"
+          aria-controls="app-menu"
+          @click="toggle"
+          @keydown="onTriggerKeydown"
         >
-          <button
-            class="menu__item"
-            role="menuitem"
-            type="button"
-            tabindex="-1"
-            @click="pick('export')"
-          >
-            <AppIcon name="download" /> Export backup
-          </button>
-          <button
-            class="menu__item"
-            role="menuitem"
-            type="button"
-            tabindex="-1"
-            @click="pick('import')"
-          >
-            <AppIcon name="upload" /> Import backup
-          </button>
+          <AppIcon name="menu" :size="24" />
+        </button>
 
-          <div class="menu__sep" role="separator" />
-          <div role="group" aria-labelledby="theme-label">
-            <div id="theme-label" class="menu__label">Theme</div>
+        <Transition name="pop">
+          <div
+            v-show="open"
+            id="app-menu"
+            ref="menu"
+            class="menu"
+            role="menu"
+            aria-label="App menu"
+            @keydown="onMenuKeydown"
+          >
             <button
-              v-for="opt in themeOptions"
-              :key="opt.value"
               class="menu__item"
-              role="menuitemradio"
+              role="menuitem"
               type="button"
               tabindex="-1"
-              :aria-checked="settings.theme === opt.value"
-              @click="settings.setTheme(opt.value)"
+              @click="pick('export')"
             >
-              <AppIcon :name="opt.icon" /> {{ opt.label }}
-              <AppIcon
-                v-if="settings.theme === opt.value"
-                class="menu__check"
-                name="check"
-                :size="18"
-              />
+              <AppIcon name="download" /> Export backup
+            </button>
+            <button
+              class="menu__item"
+              role="menuitem"
+              type="button"
+              tabindex="-1"
+              @click="pick('import')"
+            >
+              <AppIcon name="upload" /> Import backup
+            </button>
+
+            <div class="menu__sep" role="separator" />
+            <div role="group" aria-labelledby="theme-label">
+              <div id="theme-label" class="menu__label">Theme</div>
+              <button
+                v-for="opt in themeOptions"
+                :key="opt.value"
+                class="menu__item"
+                role="menuitemradio"
+                type="button"
+                tabindex="-1"
+                :aria-checked="settings.theme === opt.value"
+                @click="settings.setTheme(opt.value)"
+              >
+                <AppIcon :name="opt.icon" /> {{ opt.label }}
+                <AppIcon
+                  v-if="settings.theme === opt.value"
+                  class="menu__check"
+                  name="check"
+                  :size="18"
+                />
+              </button>
+            </div>
+
+            <div class="menu__sep" role="separator" />
+            <button
+              class="menu__item"
+              role="menuitem"
+              type="button"
+              tabindex="-1"
+              @click="pick('about')"
+            >
+              <AppIcon name="info" /> About
             </button>
           </div>
-
-          <div class="menu__sep" role="separator" />
-          <button
-            class="menu__item"
-            role="menuitem"
-            type="button"
-            tabindex="-1"
-            @click="pick('about')"
-          >
-            <AppIcon name="info" /> About
-          </button>
-        </div>
-      </Transition>
+        </Transition>
+      </div>
     </div>
   </header>
 </template>
@@ -187,13 +227,19 @@ function pick(action: 'export' | 'import' | 'about') {
 .app-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-2);
   padding: calc(var(--space-2) + env(safe-area-inset-top)) var(--space-3) var(--space-2)
     var(--space-4);
 }
 
+.middle {
+  flex: 1;
+  min-width: 0;
+}
+
 .brand {
   display: flex;
+  flex: none;
   align-items: center;
   gap: var(--space-2);
   margin: 0;
@@ -206,8 +252,45 @@ function pick(action: 'export' | 'import' | 'about') {
   border-radius: 8px;
 }
 
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 .menu-wrap {
   position: relative;
+}
+
+.filter {
+  position: relative;
+  color: var(--color-text-muted);
+}
+
+.filter--on {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.filter--on:hover {
+  background: color-mix(in srgb, var(--color-primary) 85%, var(--color-text));
+}
+
+.filter__badge {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border: 2px solid var(--color-bg);
+  border-radius: var(--radius-pill);
+  background: var(--color-text);
+  color: var(--color-bg);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  line-height: 14px;
+  text-align: center;
 }
 
 .menu {

@@ -1,74 +1,52 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import {
-  DOUBLE_TAP_MS,
   REPEAT_MIN_MS,
   REPEAT_START_MS,
-  createTapTracker,
   nextRepeatInterval,
+  pressAmount,
+  sliderStep,
+  snapToSlider,
 } from '@/lib/taps'
 
-describe('tap tracker', () => {
-  it('applies 1 immediately on a single tap', () => {
-    const t = createTapTracker()
-    expect(t.tap(1000, 200)).toEqual({ amount: 1, kind: 'tap' })
+describe('press amount', () => {
+  it('a plain tap or key press is always 1, whatever the step', () => {
+    expect(pressAmount(200, false)).toEqual({ amount: 1, kind: 'tap' })
+    expect(pressAmount(200, false)).toEqual({ amount: 1, kind: 'tap' })
+    expect(pressAmount(1, false)).toEqual({ amount: 1, kind: 'tap' })
   })
 
-  it('a double tap adds exactly step in total', () => {
-    const t = createTapTracker()
-    const first = t.tap(1000, 200)
-    const second = t.tap(1000 + 250, 200)
-    expect(second).toEqual({ amount: 199, kind: 'double' })
-    expect(first.amount + second.amount).toBe(200)
-  })
-
-  it('treats taps further apart than the window as singles', () => {
-    const t = createTapTracker()
-    t.tap(1000, 200)
-    expect(t.tap(1000 + DOUBLE_TAP_MS + 1, 200).kind).toBe('tap')
-  })
-
-  it('accepts a second tap exactly at the window edge', () => {
-    const t = createTapTracker()
-    t.tap(0, 10)
-    expect(t.tap(DOUBLE_TAP_MS, 10)).toEqual({ amount: 9, kind: 'double' })
-  })
-
-  it('a third quick tap starts a new pair', () => {
-    const t = createTapTracker()
-    t.tap(0, 10)
-    t.tap(100, 10)
-    expect(t.tap(200, 10)).toEqual({ amount: 1, kind: 'tap' })
-    expect(t.tap(300, 10)).toEqual({ amount: 9, kind: 'double' })
-  })
-
-  it('with step 1, a double tap is two single taps', () => {
-    const t = createTapTracker()
-    expect(t.tap(0, 1)).toEqual({ amount: 1, kind: 'tap' })
-    expect(t.tap(100, 1)).toEqual({ amount: 1, kind: 'tap' })
-  })
-
-  it('Shift applies the full step and breaks any pair', () => {
-    const t = createTapTracker()
-    t.tap(0, 50)
-    expect(t.tap(100, 50, true)).toEqual({ amount: 50, kind: 'step' })
-    expect(t.tap(150, 50)).toEqual({ amount: 1, kind: 'tap' })
-  })
-
-  it('keyboard: plain = 1, Shift = step, never double-tap', () => {
-    const t = createTapTracker()
-    expect(t.key(200, false)).toEqual({ amount: 1, kind: 'tap' })
-    expect(t.key(200, false)).toEqual({ amount: 1, kind: 'tap' })
-    expect(t.key(200, true)).toEqual({ amount: 200, kind: 'step' })
+  it('Shift applies the full step', () => {
+    expect(pressAmount(200, true)).toEqual({ amount: 200, kind: 'step' })
   })
 })
 
 describe('hold-to-repeat speed', () => {
-  it('speeds up from about 8/s to about 25/s', () => {
-    expect(1000 / REPEAT_START_MS).toBe(8)
+  it('speeds up from about 6/s to 20/s', () => {
+    expect(Math.round(1000 / REPEAT_START_MS)).toBe(6)
     let interval = REPEAT_START_MS
     for (let i = 0; i < 50; i++) interval = nextRepeatInterval(interval)
     expect(interval).toBe(REPEAT_MIN_MS)
-    expect(1000 / REPEAT_MIN_MS).toBe(25)
+    expect(1000 / REPEAT_MIN_MS).toBe(20)
+  })
+})
+
+describe('slider grid', () => {
+  it('is about 1% of the target, rounded down to 1-2-5', () => {
+    expect(sliderStep(7_050_900)).toBe(50_000)
+    expect(sliderStep(2_000)).toBe(20)
+    expect(sliderStep(1_000_000)).toBe(10_000)
+    expect(sliderStep(300)).toBe(2)
+    expect(sliderStep(75)).toBe(1)
+    expect(sliderStep(1)).toBe(1)
+  })
+
+  it('snaps to the grid and keeps both ends reachable', () => {
+    expect(snapToSlider(3_482_113, 7_050_900)).toBe(3_500_000)
+    expect(snapToSlider(7_049_000, 7_050_900)).toBe(7_050_000)
+    expect(snapToSlider(7_050_500, 7_050_900)).toBe(7_050_900)
+    expect(snapToSlider(7_100_000, 7_050_900)).toBe(7_050_900)
+    expect(snapToSlider(-5, 7_050_900)).toBe(0)
+    expect(snapToSlider(12, 75)).toBe(12)
   })
 })

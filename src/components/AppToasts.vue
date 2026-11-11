@@ -15,8 +15,7 @@ import { toasts } from '@/composables/useToast'
   position: fixed;
   left: 0;
   right: 0;
-  /* Above the floating add button. */
-  bottom: calc(88px + env(safe-area-inset-bottom));
+  bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
   z-index: 40;
   display: grid;
   justify-items: center;

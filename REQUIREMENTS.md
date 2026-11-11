@@ -115,6 +115,7 @@ interface Settings {
   persistRequested: boolean
   persisted: boolean | null // result of storage.persist(); null if unsupported
   backupReminderSnoozedUntil: number | null // backup banner hidden until then after dismissal
+  hideDone: boolean // show only items that haven't reached their target (default false)
 }
 ```
 
@@ -145,25 +146,26 @@ Future schema changes go through Dexie version upgrades. Never edit v1 in place 
 
 ### 5.1 Controls (on each item card)
 
-- **−** and **+** buttons with ≥ 48 × 48 px tap targets.
-- **Single tap = ±1. Double tap = ±`step`.** This lets the user jump in big steps, then fine-tune by 1 as they get close.
-  - **No waiting to detect a double tap.** The first tap applies ±1 _immediately_. If a second tap on the same button lands within **300 ms**, it applies the remainder (±(`step` − 1)), so the double tap adds exactly `step` in total. Single taps never feel laggy.
-  - The count "pop" animation shows a small floating label for the double-tap amount (e.g. "+200").
-  - If `step === 1`, a double tap is just two single taps (+2 in total).
-  - Clamping (§5.2) applies to each part separately. For example, if the first tap reaches a locked target, the second part is ignored.
-  - When `step > 1`, each button shows a small hint with just the signed step under its icon, inside the button: "−200" on −, "+200" on +. Steps of 10,000 or more use compact notation ("+25K").
-  - Set `touch-action: manipulation` on the buttons so mobile browsers don't double-tap-zoom.
+- **−** and **+** buttons 32 px tall. With a target they are 40 px wide on either side of the slider; without one they stretch across the card (− one third, + two thirds). Small on purpose, to fit more cards on a phone screen.
+- **Tap = ±1. Press and hold = ±`step`.** What a press does never depends on an earlier press, so the user always knows which they'll get. (Double-tap was tried first and dropped: users couldn't tell whether a tap would count as single or double.)
+  - A press released before **450 ms** is a tap: ±1, applied on release.
+  - Holding for 450 ms applies ±`step` once, with a short vibration where supported and a small floating label (e.g. "+200"). If the button is still held **600 ms** later, ±`step` repeats, speeding up from about 6/s to about 20/s. It stops on release, pointer leave, or when a limit is reached.
+  - No visible hint on the buttons (it cost too much width). The hold behaviour is in the buttons' `aria-label` and tooltip ("Add 1 to Almonds; hold or Shift to add 200"), and the floating "+200" label confirms each hold.
+  - Use pointer events so it works with both mouse and touch. Prevent the long-press context menu and text selection, and set `touch-action: manipulation`.
   - **Desktop/keyboard equivalent:** Shift+click or Shift+Enter/Space = ±`step`. Plain click/Enter = ±1.
-- **Press and hold** auto-repeats by **`step`**: starts after 400 ms and speeds up over time (e.g. 8/s rising to about 25/s). It stops on release, pointer leave, or when a limit is reached. Use pointer events so it works with both mouse and touch, and prevent the long-press context menu and text selection.
-- **Tap the count number** to open a "Set count" sheet with a numeric input (`inputmode="numeric"`) for typing an exact value. It also shows quick buttons for **Reset to start (n)** and, if a target is set, **Set to target**.
-- No slider.
+- **Slider** (only when the item has a target): a bar from 0 to the target, between − and + on the same row, that is both the progress bar and a slider. Sharing the row keeps cards short (about 4 fit on a 375 × 667 screen); precise large changes go through the Set count sheet.
+  - Dragging is **relative**: the value moves by how far the pointer travels, wherever it started on the bar. A tap on the bar without dragging changes nothing, so stray taps are harmless.
+  - Values snap to about 1% of the target, rounded down to a 1-2-5 number (target 7,050,900 → steps of 50,000), so a drag lands on round values. In the last half-step before the end it snaps to the exact target.
+  - `touch-action: pan-y`, so vertical swipes on the bar still scroll the list.
+  - Keyboard: `role="slider"`; arrows ± one snap step, Page Up/Down ± 10 snap steps, Home/End = 0 / target.
+- **Tap the count number** (shown with a small ✎) to open the "Set count" sheet. A segmented control picks **Set to** / **Add** / **Subtract**. Set types an exact value. Add and Subtract type an amount to apply to the current count, which is the precise way to make large adjustments (e.g. add the last 50,900). The hint shows the resulting count and the sheet shows how much is left to the target. Quick buttons: **Reset to start (n)** and, if a target is set, **Set to target**.
 
 ### 5.2 Limits and clamping
 
 - `count` never goes below **0**. − at 0 is disabled. A step that would cross 0 clamps to 0.
 - `count` never exceeds `Number.MAX_SAFE_INTEGER`.
-- **Target with `onTarget: 'lock'`**: once `count ≥ target`, **+** is disabled and replaced by a "Done ✓" state. A + that would overshoot clamps to `target`. A typed value above the target is clamped to the target, with a hint saying "Locked at target — change the target or switch to 'Keep counting' to go higher."
-- **Target with `onTarget: 'continue'`**: counting continues past the target. The progress bar stays full and the card stays in its "reached" style.
+- **Target with `onTarget: 'lock'`**: once `count ≥ target`, **+** is disabled. A + that would overshoot clamps to `target`. A typed value above the target is clamped to the target, with a hint saying "Locked at target — change the target or switch to 'Keep counting' to go higher."
+- **Target with `onTarget: 'continue'`**: counting continues past the target. The slider stays full and the card stays in its "reached" style.
 - Counts are integers only. Strip separators from typed input and reject anything non-numeric.
 
 ### 5.3 Reset
@@ -191,26 +193,29 @@ Single-screen app with bottom sheets / dialogs for editing.
 
 ```
 ┌───────────────────────────────────────┐
-│ Tallyjar 🫙                  [⋯ menu] │  header (menu: Export, Import, Theme, About)
-├───────────────────────────────────────┤
-│ [Snacks] [Books] [Steps] [+]   ← → ⇆  │  jar tabs, horizontal scroll, drag to reorder
+│ 🫙 [Snacks] [Books] [Ste›   [⏷ⁿ] [⋯] │  one header row: logo, jar tabs (scroll, drag to
+│                                       │  reorder, [+] at the end), hide-done filter, menu
 ├───────────────────────────────────────┤
 │ ┌───────────────────────────────────┐ │
-│ │▌⋮⋮ [img] Almonds        [ − ][ + ] ⋮│ │  compact one-row item card (accent bar = item color);
-│ │▌         1,240 / 2,000  [−200][+200]│ │  step hint inside the buttons (only when step > 1)
-│ │▌         ████████░░ 62%             │ │
+│ │▌⋮⋮ [img] Almonds and cashews     ⋮ │ │  name wraps to 2 lines (accent bar = item color)
+│ │▌         1,240 / 2,000 ✎     62%   │ │  tap the count to open Set count
+│ │▌   [ − ] ━━━━━━━━━━●───────── [ + ] │ │  − / slider / + in one 32 px row (with a target);
+│ │▌                                    │ │  without a target: [  −  ][     +     ] full width
 │ └───────────────────────────────────┘ │
 │ ┌───────────────────────────────────┐ │
-│ │ ...                               │ │  about 8 cards fit on a 390 × 844 phone screen
+│ │ ...                               │ │
 │ └───────────────────────────────────┘ │
-│                              ( + Item )│  floating add button
+│ ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐ │
+│          + Add item                   │  at the end of the list (no floating button,
+│ └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘ │  so nothing covers the count buttons)
 └───────────────────────────────────────┘
 ```
 
-- **About** shows the app version from `package.json` (`0.1.0` for now), injected at build time.
+- **About** shows the app version from `package.json` (e.g. `0.1.1`), injected at build time.
 
 ### 6.2 Jar tabs
 
+- The tabs live in the header row, between the logo and the filter/menu buttons, so the top bar is a single ~60 px row (the app name is shown as text only before the first jar exists; otherwise it is visually hidden but still read by screen readers). The tab row's right edge fades out to hint that it scrolls. Pills are 36 px tall.
 - Horizontal, scrollable row of pill-shaped tabs. Each pill has a color dot (or is tinted with the jar color) and the jar name. The active tab is filled with the jar color.
 - A trailing **[+]** pill creates a new jar.
 - **Reorder** by long-press (touch) or click-drag (mouse). Animate the moves.
@@ -222,17 +227,25 @@ Single-screen app with bottom sheets / dialogs for editing.
 
 - Vertical list of cards for the active jar, sorted by `order`.
 - **Reorder** by a drag handle (⋮⋮) on each card, so dragging doesn't fight with the count buttons or scrolling.
+  - On drop, undo Sortable's DOM move exactly (put the node back next to its original sibling node) and let Vue re-render from the new order. Re-sorting the elements instead moves them past Vue's fragment anchors and makes cards land in the wrong place.
 - Card menu (⋮): Edit, Reset, Duplicate to… (lists jars), Delete.
-- Floating **+ Item** button opens the Item editor for the active jar.
+- **Hide done filter**: a funnel icon button in the header, left of ⋯, shown when the open jar has items. It toggles `settings.hideDone` (global, persisted, applies to every jar) and uses `aria-pressed`.
+  - On: the button is filled in the primary color with a small badge showing how many done items are hidden. Done items (count ≥ target) are left out of the list.
+  - Below the last card: "N done items hidden · Show" (Show turns the filter off). If every item is done: "All done! N done items hidden · Show".
+  - An item finished while the filter is on stays visible for 1.5 s so its done moment plays, then leaves with the normal list animation.
+  - Reordering is off while the filter is on: drag handles are hidden and Move up / Move down are disabled, since a filtered list can't say where hidden items belong.
+  - No extra bar above the list, to keep vertical space for cards.
+- A full-width dashed **+ Add item** button after the last card opens the Item editor for the active jar. There is deliberately no floating button: it covered the + buttons of the cards beneath it.
+- Item names wrap to at most two lines, so items with similar names stay distinguishable.
 
 ### 6.4 Item card states
 
 | State            | Visual                                                                                                                           |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | Normal           | Soft tint of item color as background (≈12% light / 18% dark), 4–6 px solid accent bar on the left in the item color             |
-| Has target       | Progress bar in item color, with `count / target` and %                                                                          |
-| Target reached   | Card border in item color, a small ✓ badge, progress bar full with a gentle shimmer that plays once, count text weight increases |
-| Reached + `lock` | As above, + replaced by a disabled "Done ✓" pill                                                                                 |
+| Has target       | Slider in item color, with `count / target` and %                                                                                |
+| Target reached   | Card steps back so unfinished items stand out: same background as other cards, thumbnail replaced by a solid ✓ circle in the item color, "Done" text in place of the %, everything else dimmed to ≈55% (full strength again on hover/focus). Slider full with a shimmer that plays once. No background tint (tried and found too distracting) |
+| Reached + `lock` | As above, + disabled                                                                                                             |
 | No image         | Show a rounded square in item color with the item's first letter                                                                 |
 
 ### 6.5 Item editor (sheet)
@@ -244,7 +257,7 @@ Fields:
 - Thumbnail: add / replace / remove. Accept `image/*`, using the camera on mobile via the file input.
 - Start count (default 0). For new items, `count` initializes to `startCount`.
 - Current count (edit only; same as the Set-count sheet)
-- Step (default 1, integer ≥ 1), labelled "Double-tap step". Quick chips: 1, 5, 10, 100, 1,000.
+- Step (default 1, integer ≥ 1), labelled "Hold step". Quick chips: 1, 5, 10, 100, 1,000.
 - Target: toggle "Has target". When on, target number (≥ 1) and a segmented control: **Keep counting** (`continue`) / **Stop at target** (`lock`).
 - **Suggested step:** when a target is entered for an item that had none before (new item or `target` was `null`), and the user hasn't changed the step field during this edit, **prefill the step with a suggested value**:
   - `range = max(target − startCount, 1)`
@@ -370,8 +383,8 @@ Generated in OKLCH at a constant lightness and chroma (L 0.76, C 0.095), with hu
 Subtle and quick (150–250 ms, ease-out). **No sound.**
 
 - Count change: the number does a small scale pop (1 → 1.08 → 1) plus a slight vertical slide.
-- Progress bar: width transitions over 250 ms.
-- Target reached: one-time border glow plus the ✓ badge scaling in. No confetti.
+- Slider: fill and thumb transition over 250 ms (not while dragging).
+- Target reached: one-time border glow plus the ✓ thumbnail scaling in. No confetti.
 - List add/remove/reorder: `<TransitionGroup>` fade + move.
 - Tab switch: item list crossfades / slides slightly in the direction of the tab change.
 - Sheets: slide up with a backdrop fade.
@@ -381,8 +394,8 @@ Subtle and quick (150–250 ms, ease-out). **No sound.**
 ### 8.4 Accessibility
 
 - All controls reachable by keyboard, with visible focus rings.
-- Count buttons have `aria-label` ("Add 1 to Almonds; double-tap or Shift to add 200"). The count region uses `aria-live="polite"`.
-- Progress bar uses `role="progressbar"` with `aria-valuenow/min/max`.
+- Count buttons have `aria-label` ("Add 1 to Almonds; hold or Shift to add 200"). The count region uses `aria-live="polite"`.
+- The slider uses `role="slider"` with `aria-valuenow/min/max` and a value text such as "1,240 of 2,000, 62%".
 - Text contrast is at least 4.5:1 in both themes.
 - Drag-to-reorder has a fallback: "Move up / Move down" in the card and tab menus.
 
@@ -465,7 +478,7 @@ Keep the counting rules in §5.2 in **pure functions** (`lib/clamp.ts`) with uni
 
 **Phase 4: Items and counting**
 
-- Item editor, cards, −/+ (single tap ±1, double tap ±step, Shift = step), hold-to-repeat, suggested step from target, Set-count sheet, targets, lock/continue, reset, duplicate, delete, reorder, thumbnails.
+- Item editor, cards, −/+ (tap ±1, hold ±step, Shift = step), slider, hold-to-repeat, suggested step from target, Set-count sheet, targets, lock/continue, reset, duplicate, delete, reorder, thumbnails.
 - ✅ All rules in §5 hold, including the clamping and `suggestStep` unit tests; single taps respond with no delay; the target-reached visual appears; images survive a reload.
 
 **Phase 5: Export / Import**

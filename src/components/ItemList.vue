@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, useTemplateRef } from 'vue'
+import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
 import ItemCard from './ItemCard.vue'
 import ActionSheet, { type SheetAction } from './ActionSheet.vue'
 import SetCountSheet from './editors/SetCountSheet.vue'
 import { useItemsStore } from '@/stores/items'
 import { useCollectionsStore } from '@/stores/collections'
+import { useSettingsStore } from '@/stores/settings'
+import { isReached } from '@/lib/clamp'
 import { useSortableList } from '@/composables/useSortableList'
 import { confirm } from '@/composables/useConfirm'
 import { notify } from '@/composables/useToast'
@@ -15,7 +17,55 @@ const emit = defineEmits<{ edit: [item: Item] }>()
 
 const store = useItemsStore()
 const collections = useCollectionsStore()
+const settings = useSettingsStore()
 const list = useTemplateRef<HTMLElement>('list')
+
+// ─── Hide done ──────────────────────────────────────────────────────────────
+// An item that gets finished while done items are hidden stays a moment so its "done"
+// moment plays, then leaves; vanishing at once would feel like a misclick.
+const LINGER_MS = 1500
+
+const done = (item: Item) => isReached(item.count, item.target)
+const lingering = ref(new Set<string>())
+const lingerTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+function stopLingering() {
+  lingerTimers.forEach(clearTimeout)
+  lingerTimers.clear()
+  lingering.value = new Set()
+}
+
+watch(
+  () => store.items.filter(done).map((i) => i.id),
+  (now, before) => {
+    if (!settings.hideDone) return
+    const was = new Set(before)
+    for (const id of now) {
+      if (was.has(id)) continue
+      lingering.value = new Set(lingering.value).add(id)
+      clearTimeout(lingerTimers.get(id))
+      lingerTimers.set(
+        id,
+        setTimeout(() => {
+          lingerTimers.delete(id)
+          const next = new Set(lingering.value)
+          next.delete(id)
+          lingering.value = next
+        }, LINGER_MS),
+      )
+    }
+  },
+)
+watch(() => store.collectionId, stopLingering)
+watch(() => settings.hideDone, stopLingering)
+onBeforeUnmount(stopLingering)
+
+const visibleItems = computed(() =>
+  settings.hideDone
+    ? store.items.filter((i) => !done(i) || lingering.value.has(i.id))
+    : store.items,
+)
+const hiddenCount = computed(() => store.items.length - visibleItems.value.length)
 
 // While a drag-and-drop reorder renders, skip the list's move animation: the card is
 // already where it was dropped.
@@ -27,6 +77,8 @@ useSortableList(list, {
   fallbackTolerance: 3,
   ghostClass: 'card--ghost',
   chosenClass: 'card--chosen',
+  // Dragging among a filtered list would have to guess where the hidden items go.
+  disabled: () => settings.hideDone,
   onReorder: (ids) => {
     suppressMove.value = true
     store
@@ -67,12 +119,13 @@ const menuActions = computed<SheetAction[]>(() => {
       disabled: !item || item.count === item.startCount,
     },
     { id: 'duplicate', label: 'Duplicate to…', icon: 'copy' },
-    { id: 'up', label: 'Move up', icon: 'arrow-up', disabled: index <= 0 },
+    // Like dragging, moving is off while done items are hidden.
+    { id: 'up', label: 'Move up', icon: 'arrow-up', disabled: settings.hideDone || index <= 0 },
     {
       id: 'down',
       label: 'Move down',
       icon: 'arrow-down',
-      disabled: index === -1 || index >= store.items.length - 1,
+      disabled: settings.hideDone || index === -1 || index >= store.items.length - 1,
     },
     { id: 'delete', label: 'Delete', icon: 'trash', danger: true },
   ]
@@ -145,15 +198,24 @@ async function onDuplicate(collectionId: string) {
   <div ref="list" class="list">
     <TransitionGroup name="card" :move-class="suppressMove ? 'card-no-move' : 'card-move'">
       <ItemCard
-        v-for="item in store.items"
+        v-for="item in visibleItems"
         :key="item.id"
         :data-id="item.id"
         :item="item"
+        :reorderable="!settings.hideDone"
         @open-count="openCount"
         @open-menu="openMenu"
       />
     </TransitionGroup>
   </div>
+
+  <p v-if="hiddenCount > 0" class="hidden-note" role="status">
+    <template v-if="!visibleItems.length">All done! </template>
+    {{ hiddenCount }} done {{ hiddenCount === 1 ? 'item' : 'items' }} hidden ·
+    <button class="hidden-note__show" type="button" @click="settings.setHideDone(false)">
+      Show
+    </button>
+  </p>
 
   <SetCountSheet v-model="countOpen" :item="countItem" />
   <ActionSheet
@@ -175,6 +237,25 @@ async function onDuplicate(collectionId: string) {
   position: relative;
   display: grid;
   gap: var(--space-2);
+}
+
+.hidden-note {
+  margin: var(--space-3) 0 0;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-weight: 700;
+}
+
+.hidden-note__show {
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  border: 0;
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* Drag states (classes added by Sortable on the card root). */

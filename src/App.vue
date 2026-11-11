@@ -95,8 +95,14 @@ onMounted(async () => {
 
 <template>
   <div class="top">
-    <AppHeader @about="aboutOpen = true" @export="exportOpen = true" @import="pickImportFile" />
-    <JarTabs v-if="collections.collections.length" @create="newJar" @edit="editJar" />
+    <AppHeader
+      :show-title="!collections.collections.length"
+      @about="aboutOpen = true"
+      @export="exportOpen = true"
+      @import="pickImportFile"
+    >
+      <JarTabs v-if="collections.collections.length" @create="newJar" @edit="editJar" />
+    </AppHeader>
   </div>
 
   <main class="main">
@@ -128,18 +134,14 @@ onMounted(async () => {
           <AppIcon name="plus" :size="18" /> Add an item
         </button>
       </div>
-      <ItemList v-else @edit="editItem" />
+      <template v-else>
+        <ItemList @edit="editItem" />
+        <button v-if="items.loaded" class="add-item" type="button" @click="newItem">
+          <AppIcon name="plus" :size="20" /> Add item
+        </button>
+      </template>
     </section>
   </main>
-
-  <button
-    v-if="collections.active && items.items.length"
-    class="button fab"
-    type="button"
-    @click="newItem"
-  >
-    <AppIcon name="plus" :size="20" /> Item
-  </button>
 
   <JarEditor v-model="jarEditorOpen" :jar="editingJar" />
   <ItemEditor v-model="itemEditorOpen" :item="editingItem" />
@@ -172,7 +174,7 @@ onMounted(async () => {
 .main {
   max-width: 720px;
   margin: 0 auto;
-  padding: var(--space-2) var(--space-4) calc(96px + env(safe-area-inset-bottom));
+  padding: var(--space-2) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom));
 }
 
 .empty {
@@ -198,14 +200,25 @@ onMounted(async () => {
   margin-top: 14vh;
 }
 
-.fab {
-  position: fixed;
-  right: max(var(--space-4), calc((100vw - 720px) / 2 + var(--space-4)));
-  bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
-  z-index: 20;
+.add-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
   min-height: 56px;
-  padding: 0 var(--space-5) 0 var(--space-4);
-  box-shadow: var(--shadow-popover);
-  font-size: 1.0625rem;
+  margin-top: var(--space-3);
+  border: 2px dashed color-mix(in srgb, var(--color-text) 25%, transparent);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.add-item:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 </style>

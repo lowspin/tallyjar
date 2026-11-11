@@ -193,9 +193,11 @@ function onMenuSelect(action: string) {
   align-items: center;
   gap: var(--space-2);
   overflow-x: auto;
-  padding: var(--space-1) var(--space-4) var(--space-3);
+  /* Room for the active tab's focus ring and the drag lift; the edges fade to hint at scrolling. */
+  padding: 4px 20px 4px 4px;
   scrollbar-width: none;
   overscroll-behavior-x: contain;
+  mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
 }
 
 .tabs-row::-webkit-scrollbar {
@@ -213,9 +215,9 @@ function onMenuSelect(action: string) {
   flex: none;
   align-items: center;
   gap: var(--space-2);
-  height: 44px;
-  max-width: 220px;
-  padding: 0 var(--space-4);
+  height: 36px;
+  max-width: 160px;
+  padding: 0 var(--space-3);
   border: 1.5px solid color-mix(in srgb, var(--jar) 55%, transparent);
   border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--jar) var(--tint-card), var(--color-surface));
@@ -253,7 +255,7 @@ function onMenuSelect(action: string) {
 
 .tab--new {
   justify-content: center;
-  width: 44px;
+  width: 36px;
   padding: 0;
   border: 1.5px dashed color-mix(in srgb, var(--color-text) 35%, transparent);
   background: transparent;

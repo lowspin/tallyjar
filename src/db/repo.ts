@@ -293,6 +293,7 @@ export const DEFAULT_SETTINGS: Settings = {
   persistRequested: false,
   persisted: null,
   backupReminderSnoozedUntil: null,
+  hideDone: false,
 }
 
 /** Returns the settings row, or null on a fresh install where none exists yet. */

@@ -38,6 +38,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const persistRequested = ref(false)
   const persisted = ref<boolean | null>(null)
   const backupReminderSnoozedUntil = ref<number | null>(null)
+  const hideDone = ref(false)
   const loaded = ref(false)
 
   const systemDark = usePreferredDark()
@@ -58,6 +59,7 @@ export const useSettingsStore = defineStore('settings', () => {
     persistRequested.value = row.persistRequested
     persisted.value = row.persisted
     backupReminderSnoozedUntil.value = row.backupReminderSnoozedUntil
+    hideDone.value = row.hideDone
   }
 
   async function save(patch: Partial<Omit<Settings, 'key'>>) {
@@ -88,6 +90,11 @@ export const useSettingsStore = defineStore('settings', () => {
     void save({ theme: value })
   }
 
+  function setHideDone(value: boolean) {
+    hideDone.value = value
+    void save({ hideDone: value })
+  }
+
   function setLastCollection(id: string | null) {
     if (lastCollectionId.value === id) return
     lastCollectionId.value = id
@@ -112,9 +119,11 @@ export const useSettingsStore = defineStore('settings', () => {
     persistRequested,
     persisted,
     backupReminderSnoozedUntil,
+    hideDone,
     loaded,
     init,
     setTheme,
+    setHideDone,
     setLastCollection,
     markExported,
     snoozeBackupReminder,
