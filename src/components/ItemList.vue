@@ -36,9 +36,10 @@ function stopLingering() {
 }
 
 watch(
-  () => store.items.filter(done).map((i) => i.id),
-  (now, before) => {
-    if (!settings.hideDone) return
+  () => [store.collectionId, store.items.filter(done).map((i) => i.id)] as const,
+  ([jar, now], [jarBefore, before]) => {
+    // Switching jars swaps in a whole new list; its done items weren't just finished.
+    if (!settings.hideDone || jar !== jarBefore) return
     const was = new Set(before)
     for (const id of now) {
       if (was.has(id)) continue

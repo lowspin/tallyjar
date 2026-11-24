@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import * as repo from '@/db/repo'
 import { assertCount } from '@/db/validate'
 import { applyDelta } from '@/lib/clamp'
@@ -17,6 +17,8 @@ export const useItemsStore = defineStore('items', () => {
   const collectionId = ref<string | null>(null)
   const items = ref<Item[]>([])
   const loaded = ref(false)
+  /** False while the active jar's items are still loading (`items` may hold the previous jar's). */
+  const ready = computed(() => loaded.value && collectionId.value === collections.activeId)
 
   // ─── Throttled count writes ───────────────────────────────────────────────
   // The first change is written at once, so a single tap is saved even if the page closes
@@ -172,6 +174,7 @@ export const useItemsStore = defineStore('items', () => {
     collectionId,
     items,
     loaded,
+    ready,
     load,
     create,
     update,

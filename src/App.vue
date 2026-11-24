@@ -128,7 +128,10 @@ onMounted(async () => {
       role="tabpanel"
       :aria-labelledby="jarTabId(collections.active.id)"
     >
-      <div v-if="items.loaded && !items.items.length" class="empty empty--jar">
+      <div v-if="!items.ready" class="loading" role="status" aria-label="Loading items">
+        <span class="loading__spinner" aria-hidden="true"></span>
+      </div>
+      <div v-else-if="!items.items.length" class="empty empty--jar">
         <p>This jar is empty — add something to count.</p>
         <button class="button" type="button" @click="newItem">
           <AppIcon name="plus" :size="18" /> Add an item
@@ -136,7 +139,7 @@ onMounted(async () => {
       </div>
       <template v-else>
         <ItemList @edit="editItem" />
-        <button v-if="items.loaded" class="add-item" type="button" @click="newItem">
+        <button class="add-item" type="button" @click="newItem">
           <AppIcon name="plus" :size="20" /> Add item
         </button>
       </template>
@@ -194,6 +197,45 @@ onMounted(async () => {
   margin: 0 0 var(--space-3);
   max-width: 34ch;
   color: var(--color-text-muted);
+}
+
+.loading {
+  display: grid;
+  place-items: center;
+  margin-top: 14vh;
+}
+
+/* Fades in after a short delay, so a quick load doesn't flash it. */
+.loading__spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  opacity: 0;
+  animation:
+    loading-in var(--duration-fast) 200ms forwards,
+    loading-spin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading__spinner {
+    animation:
+      loading-in var(--duration-fast) 200ms forwards,
+      loading-spin 2.4s linear infinite;
+  }
+}
+
+@keyframes loading-in {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .empty--jar {
